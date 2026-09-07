@@ -29,7 +29,7 @@ export default function OverviewHero() {
 
   if (!weather) return null;
 
-  const { current, aqi, marine, alerts, cityName, state, isDemo } = weather;
+  const { current, aqi, marine, alerts, cityName, state } = weather;
 
   // Icon mapping
   const renderWeatherIcon = (iconName) => {
@@ -100,8 +100,9 @@ export default function OverviewHero() {
           {/* Left: Location & Current Temp */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-sky-950 text-sky-300 border border-sky-800/60">
-                {isDemo ? '🧪 Curated Prototype Scenario' : '📡 Live Station Telemetry'}
+              <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-sky-950 text-sky-300 border border-sky-800/60 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                📡 Live Station Telemetry
               </span>
               <span className="text-xs text-slate-400">
                 IST: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

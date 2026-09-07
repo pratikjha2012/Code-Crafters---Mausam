@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useWeather } from '../context/WeatherContext';
 import { useUser } from '../context/UserContext';
 import { 
@@ -8,31 +8,92 @@ import {
   Sparkles, 
   Volume2, 
   VolumeX, 
-  RefreshCw, 
+  Mic, 
+  MicOff, 
   User, 
-  Languages,
-  HelpCircle,
-  Minimize2,
-  Maximize2
+  Clock,
+  Radio,
+  CheckCircle2,
+  ChevronRight
 } from 'lucide-react';
+
+const PREDEFINED_QUESTIONS_EN = [
+  { label: '🌧️ Will it rain today?', query: 'Will it rain today?' },
+  { label: "🌡️ Today's temperature", query: "What is today's temperature and feels-like?" },
+  { label: "☔ Tomorrow's forecast", query: "What is tomorrow's weather forecast?" },
+  { label: '💨 Wind conditions', query: 'What are the current wind conditions and speed?' },
+  { label: '⚠️ Weather alerts', query: 'Are there any active weather alerts?' },
+  { label: '☀️ UV index', query: 'What is the UV index today?' },
+  { label: '🌅 Sunrise & sunset', query: 'What are the sunrise and sunset times?' },
+  { label: '📅 7-day forecast', query: 'Show me the 7-day weather forecast outlook' },
+];
+
+const PREDEFINED_QUESTIONS_HI = [
+  { label: '🌧️ क्या आज बारिश होगी?', query: 'क्या आज बारिश होगी?' },
+  { label: '🌡️ आज का तापमान', query: 'आज का तापमान और मौसम कैसा है?' },
+  { label: '☔ कल का पूर्वानुमान', query: 'कल का मौसम पूर्वानुमान क्या है?' },
+  { label: '💨 हवा की स्थिति', query: 'हवा की गति और स्थिति क्या है?' },
+  { label: '⚠️ मौसम चेतावनी', query: 'क्या कोई सक्रिय मौसम चेतावनी या अलर्ट है?' },
+  { label: '☀️ यूवी इंडेक्स', query: 'आज यूवी इंडेक्स कितना है?' },
+  { label: '🌅 सूर्योदय व सूर्यास्त', query: 'आज सूर्योदय और सूर्यास्त का समय क्या है?' },
+  { label: '📅 7-दिन का पूर्वानुमान', query: '7-दिन का मौसम पूर्वानुमान दिखाएं' },
+];
 
 export default function WeatherChatbot() {
   const { weather, selectedCity, language } = useWeather();
   const { user } = useUser();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      id: 'm1',
-      sender: 'ai',
-      text: language === 'hi' 
-        ? `नमस्ते ${user.name}! मैं आपका मौसम एआई मित्र (Mausam AI Mitra) हूँ। आप मुझसे किसी भी भाषा (हिन्दी, English, বাংলা, தமிழ், मराठी, ইত্যাদি) में मौसम, वायु गुणवत्ता, स्वास्थ्य या कृषि से जुड़े सवाल पूछ सकते हैं।`
-        : `Namaste ${user.name}! I am your multilingual Mausam AI Mitra. You can ask me weather, AQI, running, travel, or agriculture questions in ANY language!`
-    }
-  ]);
+  
+  const sessionIdRef = useRef(`session-${Date.now()}`);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [playingMessageId, setPlayingMessageId] = useState(null);
+  const [lastTelemetryUpdate, setLastTelemetryUpdate] = useState(new Date());
+  const [relativeTimeStr, setRelativeTimeStr] = useState('just now');
+
   const messagesEndRef = useRef(null);
+  const activeAudioRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  const initialGreeting = language === 'hi'
+    ? `नमस्ते ${user.name || ''}! मैं आपका मौसम एआई मित्र (Mausam Assistant) हूँ। मैं आईएमडी और रियल-टाइम एनडब्ल्यूपी (NWP) डेटा से संचालित हूँ। आप मुझसे मौसम, वर्षा, वायु गुणवत्ता (AQI), या 7-दिवसीय पूर्वानुमान के बारे में कुछ भी पूछ सकते हैं।`
+    : `Namaste ${user.name || ''}! I'm Mausam Assistant, powered by real-time meteorological observations and NWP multi-model data. Ask me anything about current weather, rain probability, hourly/7-day forecasts, air quality, or alerts!`;
+
+  const [messages, setMessages] = useState([
+    {
+      id: 'm-welcome',
+      sender: 'ai',
+      text: initialGreeting,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      source: 'Live NWP Telemetry',
+      toolCalls: [],
+      followUps: language === 'hi' 
+        ? ['🌧️ क्या आज बारिश होगी?', '🌡️ आज का तापमान', '⚠️ मौसम चेतावनी', '📅 7-दिन का पूर्वानुमान']
+        : ['🌧️ Will it rain today?', '🌡️ Today\'s temperature', '⚠️ Weather alerts', '📅 7-day forecast']
+    }
+  ]);
+
+  const quickQuestions = language === 'hi' ? PREDEFINED_QUESTIONS_HI : PREDEFINED_QUESTIONS_EN;
+
+  // Relative timestamp calculation
+  useEffect(() => {
+    const updateRelativeTime = () => {
+      const diffSec = Math.floor((Date.now() - lastTelemetryUpdate.getTime()) / 1000);
+      if (diffSec < 45) {
+        setRelativeTimeStr('just now');
+      } else if (diffSec < 120) {
+        setRelativeTimeStr('1 min ago');
+      } else {
+        setRelativeTimeStr(`${Math.floor(diffSec / 60)} mins ago`);
+      }
+    };
+
+    updateRelativeTime();
+    const interval = setInterval(updateRelativeTime, 30000);
+    return () => clearInterval(interval);
+  }, [lastTelemetryUpdate]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -40,118 +101,210 @@ export default function WeatherChatbot() {
 
   useEffect(() => {
     if (isOpen) scrollToBottom();
-  }, [messages, isOpen]);
+  }, [messages, isTyping, isOpen]);
 
-  // Voice synthesis
-  const speakText = (text) => {
-    if (!isVoiceEnabled || typeof window === 'undefined' || !window.speechSynthesis) return;
-    try {
+  // Audio Playback with ElevenLabs TTS + Browser Fallback
+  const stopAudio = () => {
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
-      const clean = text.replace(/[*#_`]/g, '');
-      const utter = new SpeechSynthesisUtterance(clean);
-      window.speechSynthesis.speak(utter);
-    } catch (e) {
-      console.warn('Speech synthesis error', e);
+    }
+    setPlayingMessageId(null);
+  };
+
+  const playMessageAudio = async (text, msgId) => {
+    if (playingMessageId === msgId) {
+      stopAudio();
+      return;
+    }
+
+    stopAudio();
+    setPlayingMessageId(msgId);
+
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('audio/mpeg')) {
+        const blob = await res.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        activeAudioRef.current = audio;
+
+        audio.onended = () => {
+          setPlayingMessageId(null);
+          activeAudioRef.current = null;
+        };
+        audio.onerror = () => {
+          setPlayingMessageId(null);
+          activeAudioRef.current = null;
+        };
+        await audio.play();
+        return;
+      }
+
+      // JSON response: client fallback needed
+      const json = await res.json().catch(() => ({}));
+      if (json.useClientFallback && typeof window !== 'undefined' && window.speechSynthesis) {
+        const clean = text.replace(/[*#_`]/g, '');
+        const utter = new SpeechSynthesisUtterance(clean);
+        utter.lang = /[\u0900-\u097F]/.test(text) ? 'hi-IN' : 'en-US';
+        utter.onend = () => setPlayingMessageId(null);
+        utter.onerror = () => setPlayingMessageId(null);
+        window.speechSynthesis.speak(utter);
+      } else {
+        setPlayingMessageId(null);
+      }
+    } catch (err) {
+      console.warn('TTS streaming failed, falling back to local speech synthesis:', err);
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        const clean = text.replace(/[*#_`]/g, '');
+        const utter = new SpeechSynthesisUtterance(clean);
+        utter.lang = /[\u0900-\u097F]/.test(text) ? 'hi-IN' : 'en-US';
+        utter.onend = () => setPlayingMessageId(null);
+        utter.onerror = () => setPlayingMessageId(null);
+        window.speechSynthesis.speak(utter);
+      } else {
+        setPlayingMessageId(null);
+      }
     }
   };
 
-  // Multilingual Knowledge & Response Engine
-  const generateMultilingualResponse = (query) => {
-    const q = query.toLowerCase();
-    const cur = weather?.current || {};
-    const aqi = weather?.aqi || {};
-    const city = selectedCity?.name || 'Your Station';
-
-    // Detect language script or intent
-    const isHindi = /[\u0900-\u097F]/.test(query) || q.includes('kya') || q.includes('aaj') || q.includes('barish') || q.includes('mausam');
-    const isBengali = /[\u0980-\u09FF]/.test(query);
-    const isTamil = /[\u0B80-\u0BFF]/.test(query);
-    const isTelugu = /[\u0C00-\u0C7F]/.test(query);
-
-    // 1. Rain / Precipitation queries
-    if (q.includes('rain') || q.includes('barish') || q.includes('shower') || q.includes('বৃষ্টি') || q.includes('மழை') || q.includes('వర్షం')) {
-      if (isHindi) {
-        return `${city} में वर्तमान में वर्षा की संभावना ${cur.rainProb || 15}% है। स्थिति: ${cur.condition}। ${cur.rainProb > 50 ? 'आज बाहर निकलते समय छाता या रेनकोट अवश्य साथ रखें।' : 'आज गंभीर बारिश की संभावना कम है, मौसम सामान्य रहेगा।'}`;
+  // Web Speech API STT Microphone Input
+  const toggleListening = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
       }
-      if (isBengali) {
-        return `${city}-তে বৃষ্টির সম্ভাবনা ${cur.rainProb || 15}%। বর্তমান অবস্থা: ${cur.condition}। ${cur.rainProb > 50 ? 'বাইরে বের হলে ছাতা সঙ্গে রাখবেন।' : 'আজ ভারী বৃষ্টির সম্ভাবনা কম।'}`;
-      }
-      if (isTamil) {
-        return `${city}-இல் மழை வாய்ப்பு ${cur.rainProb || 15}% ஆக உள்ளது. ${cur.rainProb > 50 ? 'மழை வரக்கூடும், குடை எடுத்துச் செல்லவும்.' : 'மழைக்கான வாய்ப்பு குறைவு.'}`;
-      }
-      return `In ${city}, the current rain probability is ${cur.rainProb}%. Current condition: ${cur.condition}. ${cur.rainProb >= 50 ? 'We recommend carrying a raincoat or umbrella today.' : 'Precipitation risk is low; clear skies are favored.'}`;
+      setIsListening(false);
+      return;
     }
 
-    // 2. Air Quality, Allergies & Asthma
-    if (q.includes('aqi') || q.includes('air') || q.includes('smog') || q.includes('asthma') || q.includes('allergy') || q.includes('pollen') || q.includes('दमा') || q.includes('हवा')) {
-      const hasAsthma = user.allergies.includes('asthma');
-      if (isHindi) {
-        return `${city} में वर्तमान AQI ${aqi.usAqi} (${aqi.category}) है, और PM2.5 स्तर ${aqi.pm25} µg/m³ है। ${aqi.usAqi > 150 ? (hasAsthma ? '⚠️ चूंकि आपकी प्रोफाइल में अस्थमा दर्ज है, कृपया बाहर व्यायाम से बचें और N95 मास्क पहनें।' : '⚠️ वायु गुणवत्ता अस्वस्थ है। मास्क पहनना उचित रहेगा।') : '✅ वायु गुणवत्ता अनुकूल है और बाहर घूमना सुरक्षित है।'}`;
-      }
-      return `The Air Quality Index (AQI) in ${city} is currently ${aqi.usAqi} (${aqi.category}), with PM2.5 at ${aqi.pm25} µg/m³ and grass pollen at ${aqi.pollenGrass} grains/m³. ${aqi.usAqi > 150 ? (hasAsthma ? '⚠️ Notice for your Asthma profile: Airway irritation is likely. Avoid strenuous outdoor runs and keep an inhaler handy.' : '⚠️ Air is moderately polluted. Vulnerable groups should limit prolonged outdoor exertion.') : '✅ Air quality is within safe limits for outdoor recreation.'}`;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in this browser. Please use Chrome, Edge, or a Web Speech-compatible browser.");
+      return;
     }
 
-    // 3. Commute, Visibility & Traffic
-    if (q.includes('commute') || q.includes('traffic') || q.includes('fog') || q.includes('visibility') || q.includes('road') || q.includes('कोहरा') || q.includes('ट्रैफिक')) {
-      const vis = cur.visibility || 5000;
-      if (isHindi) {
-        return `${city} में सड़क दृश्यता (Visibility) लगभग ${vis < 1000 ? `${vis} मीटर` : `${(vis/1000).toFixed(1)} किमी`} है। आपके सुबह ${user.commuteTime} के आवागमन के दौरान ${vis < 300 ? 'घने कोहरे की चेतावनी है; फॉग लाइट ऑन रखें।' : 'सड़कें साफ हैं, सामान्य गति से ड्राइव करें।'}`;
-      }
-      return `Optical road visibility in ${city} is measured at ${vis < 1000 ? `${vis}m` : `${(vis/1000).toFixed(1)}km`}. For your ${user.commuteTime} commute window: ${vis < 500 ? 'Caution: Reduced headway distance due to mist/fog. Keep low-beam lamps on.' : 'Road conditions are clear with low transit drag.'}`;
-    }
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = language === 'hi' ? 'hi-IN' : 'en-IN';
 
-    // 4. Fitness / Running
-    if (q.includes('run') || q.includes('jog') || q.includes('workout') || q.includes('fitness') || q.includes('दौड़') || q.includes('कसरत')) {
-      if (isHindi) {
-        return `${city} में वर्तमान तापमान ${cur.temp}°C (महसूस: ${cur.feelsLike}°C) है। आपके शाम/सुबह के वर्कआउट के लिए सूर्योदय ${cur.sunrise} और सूर्यास्त ${cur.sunset} के आस-पास का समय सबसे अनुकूल रहेगा।`;
-      }
-      return `Current ambient temp in ${city} is ${cur.temp}°C (feels like ${cur.feelsLike}°C) with ${cur.humidity}% humidity. The best workout window is around sunrise (${cur.sunrise}) or sunset (${cur.sunset}) when solar radiation drops. Hydrate with at least 600ml water/hour.`;
-    }
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
 
-    // 5. Agriculture / Farming
-    if (q.includes('crop') || q.includes('soil') || q.includes('farmer') || q.includes('kisan') || q.includes('fasal') || q.includes('फसल') || q.includes('खेती') || q.includes('सिंचाई')) {
-      const soilMoist = (cur.soilMoisture * 100).toFixed(0);
-      if (isHindi) {
-        return `कृषि मौसम सेवा (GKMS): ${city} में ऊपरी मिट्टी की नमी ${soilMoist}% है। हवा की गति ${cur.windSpeed} km/h है। ${cur.windSpeed < 18 && cur.rainProb < 25 ? 'कीटनाशक व खाद छिड़काव के लिए वर्तमान मौसम सर्वथा उपयुक्त है।' : 'तेज हवा या वर्षा की आशंका के कारण छिड़काव टालें।'}`;
-      }
-      return `GKMS Agromet Bulletin for ${city}: Soil moisture in root zone is ~${soilMoist}%. Wind speed is ${cur.windSpeed} km/h. ${cur.windSpeed < 18 && cur.rainProb < 25 ? 'Field condition is favorable for agrochemical spraying and irrigation.' : 'Avoid chemical spray due to drift hazard.'}`;
-    }
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0]?.transcript;
+        if (transcript) {
+          setInputText(transcript);
+          handleSend(transcript);
+        }
+        setIsListening(false);
+      };
 
-    // 6. Generic intelligent response in requested language
-    if (isHindi) {
-      return `${city} का वर्तमान मौसम: तापमान ${cur.temp}°C, स्थिति: ${cur.condition}, आर्द्रता: ${cur.humidity}%, और AQI: ${aqi.usAqi} (${aqi.category}) है। आप मुझसे किसी विशिष्ट विषय (जैसे वर्षा, कोहरा, दौड़, या यात्रा) के बारे में पूछ सकते हैं।`;
+      recognition.onerror = (event) => {
+        console.warn('Speech recognition error:', event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error('Failed to start speech recognition:', err);
+      setIsListening(false);
     }
-    if (isBengali) {
-      return `${city}-র বর্তমান তাপমাত্রা ${cur.temp}°C, অবস্থা: ${cur.condition}, আর্দ্রতা: ${cur.humidity}%, এবং AQI: ${aqi.usAqi}। আরও বিস্তারিত তথ্যের জন্য প্রশ্ন করতে পারেন।`;
-    }
-    return `Currently in ${city}, it is ${cur.temp}°C and ${cur.condition} with ${cur.humidity}% humidity, ${cur.windSpeed} km/h wind, and AQI ${aqi.usAqi} (${aqi.category}). How can I assist with your plans today?`;
   };
 
-  const handleSend = (textToSend = inputText) => {
-    const text = textToSend.trim();
+  // Main Send Function to Backend /api/chat
+  const handleSend = async (textToSend = inputText) => {
+    const text = (textToSend || '').trim();
     if (!text) return;
 
-    const userMsg = { id: `u-${Date.now()}`, sender: 'user', text };
+    // Stop ongoing audio
+    stopAudio();
+
+    const userMsgId = `u-${Date.now()}`;
+    const userMsg = {
+      id: userMsgId,
+      sender: 'user',
+      text,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
     setMessages(prev => [...prev, userMsg]);
     setInputText('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      const reply = generateMultilingualResponse(text);
-      const aiMsg = { id: `ai-${Date.now()}`, sender: 'ai', text: reply };
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          sessionId: sessionIdRef.current,
+          userLocation: selectedCity?.name || 'New Delhi',
+          preferredLanguage: language
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP Error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      const aiMsgId = `ai-${Date.now()}`;
+      const aiMsg = {
+        id: aiMsgId,
+        sender: 'ai',
+        text: data.text,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        source: data.source || 'Real Live NWP Telemetry',
+        toolCalls: data.toolCalls || [],
+        followUps: data.followUps || []
+      };
+
       setMessages(prev => [...prev, aiMsg]);
       setIsTyping(false);
-      speakText(reply);
-    }, 600);
-  };
+      setLastTelemetryUpdate(new Date());
 
-  const promptChips = [
-    { label: '🌧️ Will it rain today?', query: 'Will it rain today?' },
-    { label: '🫁 Is AQI safe for my allergies?', query: 'Is the AQI safe for my asthma and allergies today?' },
-    { label: '🏃 Best time for running?', query: 'What is the best hour for outdoor workout today?' },
-    { label: '🚗 Morning commute status?', query: 'What is the road visibility and commute delay risk?' },
-    { label: 'आज बारिश होगी क्या? (Hindi)', query: 'क्या आज बारिश होगी?' },
-  ];
+      if (isVoiceEnabled) {
+        playMessageAudio(data.text, aiMsgId);
+      }
+    } catch (err) {
+      console.error('Chatbot API request failed:', err);
+      setIsTyping(false);
+      const errorMsg = {
+        id: `err-${Date.now()}`,
+        sender: 'ai',
+        text: language === 'hi'
+          ? "मौसम सेवा से कनेक्ट करने में असमर्थ। कृपया सुनिश्चित करें कि बैकएंड सर्वर सक्रिय है।"
+          : "Unable to reach the live Mausam meteorological backend. Please check connection and verify the backend service is running.",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        source: 'System Warning',
+        toolCalls: [],
+        followUps: [
+          '🌧️ Will it rain today?',
+          '🌡️ Today\'s temperature',
+          '⚠️ Weather alerts'
+        ]
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    }
+  };
 
   return (
     <>
@@ -159,12 +312,12 @@ export default function WeatherChatbot() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 p-4 rounded-full bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 text-white shadow-[0_10px_35px_rgba(14,165,233,0.5)] border border-sky-400/40 hover:scale-110 active:scale-95 transition-all group flex items-center gap-2.5"
-          title="Open Mausam AI Mitra (मौसम मित्र)"
+          className="fixed bottom-6 right-6 z-50 p-3.5 sm:p-4 rounded-full bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 text-white shadow-[0_10px_35px_rgba(14,165,233,0.5)] border border-sky-400/40 hover:scale-110 active:scale-95 transition-all group flex items-center gap-2.5"
+          title="Open Mausam Assistant"
         >
           <Bot className="w-6 h-6 animate-bounce" />
           <span className="text-xs font-black tracking-wide pr-1 hidden sm:inline">
-            Mausam AI Mitra
+            Mausam Assistant
           </span>
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 border border-slate-900 absolute top-2 right-2 animate-ping" />
         </button>
@@ -172,110 +325,234 @@ export default function WeatherChatbot() {
 
       {/* Expandable Chatbot Window */}
       {isOpen && (
-        <div className="fixed bottom-6 right-4 sm:right-6 z-50 w-[92vw] sm:w-[420px] h-[550px] bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-3xl shadow-2xl flex flex-col overflow-hidden ring-1 ring-sky-500/30 text-slate-100 animate-in fade-in slide-in-from-bottom-5">
+        <div className="fixed bottom-4 right-3 sm:bottom-6 sm:right-6 z-50 w-[94vw] sm:w-[440px] h-[580px] max-h-[88vh] bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-3xl shadow-2xl flex flex-col overflow-hidden ring-1 ring-sky-500/30 text-slate-100 animate-in fade-in slide-in-from-bottom-5">
           
           {/* Header */}
-          <div className="p-4 bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 flex items-center justify-between text-white shadow-md">
+          <div className="p-3.5 sm:p-4 bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 flex items-center justify-between text-white shadow-md">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
+              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shrink-0">
                 <Bot className="w-5 h-5 text-white" />
               </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <h3 className="font-extrabold text-sm tracking-tight">मौसम मित्र • Mausam AI</h3>
-                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-black/30 border border-white/20">
-                    Multilingual
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h3 className="font-extrabold text-sm tracking-tight truncate">Mausam Assistant</h3>
+                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    Live NWP
                   </span>
                 </div>
-                <p className="text-[10px] text-sky-100">
-                  Speaks any language • Station: {selectedCity?.name}
-                </p>
+                <div className="flex items-center gap-2 text-[10px] text-sky-100">
+                  <span className="truncate">Station: {selectedCity?.name || 'New Delhi'}</span>
+                  <span>•</span>
+                  <span className="flex items-center gap-0.5 text-sky-200 shrink-0">
+                    <Clock className="w-2.5 h-2.5" />
+                    {relativeTimeStr}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               {/* Voice Readout Toggle */}
               <button
                 onClick={() => setIsVoiceEnabled(!isVoiceEnabled)}
                 className={`p-1.5 rounded-lg border transition ${
-                  isVoiceEnabled ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-black/20 border-white/20 text-white/70 hover:text-white'
+                  isVoiceEnabled 
+                    ? 'bg-emerald-500 border-emerald-400 text-white shadow-sm' 
+                    : 'bg-black/20 border-white/20 text-white/70 hover:text-white'
                 }`}
-                title={isVoiceEnabled ? 'Voice Enabled (Click to Mute)' : 'Enable Voice Readout'}
+                title={isVoiceEnabled ? 'Auto-Voice Enabled (Click to Mute)' : 'Enable Voice Readout'}
               >
                 {isVoiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
               </button>
 
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  stopAudio();
+                  setIsOpen(false);
+                }}
                 className="p-1.5 rounded-lg bg-black/20 hover:bg-black/40 text-white/80 hover:text-white transition"
+                title="Close"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Prompt Chips Bar */}
-          <div className="px-3 py-2 bg-slate-950/80 border-b border-slate-800 flex items-center gap-1.5 overflow-x-auto scrollbar-none text-[10px]">
-            {promptChips.map((chip, idx) => (
+          {/* 8 Predefined Quick Questions Carousel / Chips */}
+          <div className="px-3 py-2 bg-slate-950/90 border-b border-slate-800 flex items-center gap-1.5 overflow-x-auto scrollbar-none text-[11px]">
+            {quickQuestions.map((item, idx) => (
               <button
                 key={idx}
-                onClick={() => handleSend(chip.query)}
-                className="px-2.5 py-1 rounded-full bg-slate-900 hover:bg-sky-950 text-slate-300 hover:text-sky-300 border border-slate-800 hover:border-sky-700 whitespace-nowrap transition"
+                onClick={() => handleSend(item.query)}
+                className="px-2.5 py-1 rounded-full bg-slate-900 hover:bg-sky-950/80 text-slate-300 hover:text-sky-300 border border-slate-800 hover:border-sky-700/80 whitespace-nowrap transition flex items-center gap-1 shrink-0 font-medium active:scale-95"
               >
-                {chip.label}
+                <span>{item.label}</span>
               </button>
             ))}
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-3.5 text-xs">
+          <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto space-y-3.5 text-xs">
             {messages.map((m) => {
               const isUser = m.sender === 'user';
+              const isSpeaking = playingMessageId === m.id;
+
               return (
                 <div
                   key={m.id}
                   className={`flex items-start gap-2.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
                 >
                   <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
-                    isUser ? 'bg-sky-600 text-white' : 'bg-slate-800 text-sky-400 border border-slate-700'
+                    isUser ? 'bg-sky-600 text-white shadow-sm' : 'bg-slate-800 text-sky-400 border border-slate-700'
                   }`}>
                     {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
                   </div>
 
-                  <div className={`p-3 rounded-2xl max-w-[82%] leading-relaxed shadow-md ${
-                    isUser 
-                      ? 'bg-sky-600 text-white rounded-tr-sm' 
-                      : 'bg-slate-950 border border-slate-800 text-slate-200 rounded-tl-sm'
-                  }`}>
-                    <p className="whitespace-pre-line">{m.text}</p>
+                  <div className={`flex flex-col gap-1.5 max-w-[84%] ${isUser ? 'items-end' : 'items-start'}`}>
+                    <div className={`p-3.5 rounded-2xl leading-relaxed shadow-md ${
+                      isUser 
+                        ? 'bg-sky-600 text-white rounded-tr-sm' 
+                        : 'bg-slate-950 border border-slate-800 text-slate-200 rounded-tl-sm'
+                    }`}>
+                      <p className="whitespace-pre-line text-xs">{m.text}</p>
+
+                      {/* Tool Calls Execution Badges */}
+                      {m.toolCalls && m.toolCalls.length > 0 && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex flex-wrap gap-1.5">
+                          {m.toolCalls.map((tc, tcIdx) => (
+                            <span 
+                              key={tcIdx}
+                              className="text-[9px] font-mono px-2 py-0.5 rounded bg-sky-950/70 text-sky-300 border border-sky-800/60 flex items-center gap-1"
+                            >
+                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+                              <span>{tc.tool}</span>
+                              <span className="text-slate-400">({tc.location})</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Meta Bar: Timestamp, Source & Audio Readout Button */}
+                    <div className="flex items-center gap-2 px-1 text-[10px] text-slate-400">
+                      <span>{m.timestamp}</span>
+                      {!isUser && (
+                        <>
+                          <span>•</span>
+                          <span className="text-sky-400 font-medium">{m.source || 'Live NWP'}</span>
+                          <span>•</span>
+                          <button
+                            onClick={() => playMessageAudio(m.text, m.id)}
+                            className={`flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-slate-800 transition ${
+                              isSpeaking ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                            title={isSpeaking ? 'Stop Audio' : 'Listen with ElevenLabs / Voice'}
+                          >
+                            {isSpeaking ? (
+                              <span className="flex items-center gap-1 text-emerald-400 font-bold">Playing</span>
+                            ) : (
+                              <span className="flex items-center gap-1"><Volume2 className="w-2.5 h-2.5" /> Listen</span>
+                            )}
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {/* 2-4 Dynamic Follow-Up Suggestion Chips */}
+                    {!isUser && m.followUps && m.followUps.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {m.followUps.map((fu, fuIdx) => (
+                          <button
+                            key={fuIdx}
+                            onClick={() => handleSend(fu)}
+                            className="text-[10px] px-2.5 py-1 rounded-xl bg-slate-900/90 hover:bg-sky-950 text-sky-300 border border-sky-800/50 hover:border-sky-600 transition flex items-center gap-1 text-left active:scale-95"
+                          >
+                            <span>{fu}</span>
+                            <ChevronRight className="w-2.5 h-2.5 text-sky-400 shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             })}
 
             {isTyping && (
-              <div className="flex items-center gap-2 text-slate-400 text-xs pl-9">
+              <div className="flex items-center gap-2 text-slate-400 text-xs pl-9 py-1">
                 <Sparkles className="w-3.5 h-3.5 text-sky-400 animate-spin" />
-                <span>Mausam AI Mitra is analyzing telemetry...</span>
+                <span>Mausam Assistant is querying live NWP telemetry...</span>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Audio Speaking Live Status Banner */}
+          {playingMessageId && (
+            <div className="px-4 py-1.5 bg-indigo-950/70 border-t border-indigo-800/60 flex items-center justify-between text-[11px] text-indigo-200 animate-pulse">
+              <span className="flex items-center gap-1.5">
+                <Radio className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                <span>Voice Audio Playing...</span>
+              </span>
+              <button 
+                onClick={stopAudio}
+                className="text-[10px] text-indigo-300 hover:text-white underline"
+              >
+                Stop
+              </button>
+            </div>
+          )}
+
+          {/* Voice Input Active Banner */}
+          {isListening && (
+            <div className="px-4 py-1.5 bg-rose-950/80 border-t border-rose-800/60 flex items-center justify-between text-[11px] text-rose-200">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                <span className="font-semibold">Listening... Speak your weather query now</span>
+              </span>
+              <button 
+                onClick={toggleListening}
+                className="text-[10px] text-rose-300 hover:text-white underline"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
           {/* Input Area */}
           <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2">
+            {/* Microphone STT Button */}
+            <button
+              onClick={toggleListening}
+              className={`p-2.5 rounded-xl border transition ${
+                isListening
+                  ? 'bg-rose-600 border-rose-500 text-white shadow-[0_0_12px_rgba(244,63,94,0.6)] animate-pulse'
+                  : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:text-white hover:border-slate-600'
+              }`}
+              title={isListening ? 'Stop Listening' : 'Voice Input (Speak your weather query)'}
+            >
+              {isListening ? <MicOff className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4" />}
+            </button>
+
             <input
               type="text"
-              placeholder="Ask anything in English, हिन्दी, বাংলা, தமிழ்..."
+              placeholder={
+                language === 'hi' 
+                  ? "मौसम के बारे में पूछें (उदा. क्या आज बारिश होगी?)..." 
+                  : "Ask anything about weather (e.g. Will it rain today?)..."
+              }
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               className="flex-1 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700/80 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
             />
+
             <button
               onClick={() => handleSend()}
               disabled={!inputText.trim()}
               className="p-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white shadow transition"
+              title="Send Query"
             >
               <Send className="w-4 h-4" />
             </button>

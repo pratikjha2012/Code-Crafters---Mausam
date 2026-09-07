@@ -1,8 +1,7 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useWeather } from '../context/WeatherContext';
 import { useUser } from '../context/UserContext';
 import { INDIAN_CITIES, reverseGeocode } from '../services/weatherApi';
-import { DEMO_SCENARIOS } from '../data/demoScenarios';
 import { 
   CloudSun, 
   Search, 
@@ -31,10 +30,6 @@ import {
 
 export default function Navbar({ currentPage = 'home', onNavigate }) {
   const { 
-    dataMode, 
-    setDataMode, 
-    activeScenarioId, 
-    setActiveScenarioId, 
     selectedCity, 
     setSelectedCity,
     language,
@@ -42,7 +37,8 @@ export default function Navbar({ currentPage = 'home', onNavigate }) {
     isMobilePreview,
     setIsMobilePreview,
     loading,
-    refreshData
+    refreshData,
+    weather
   } = useWeather();
 
   const { user, setIsProfileModalOpen } = useUser();
@@ -60,13 +56,6 @@ export default function Navbar({ currentPage = 'home', onNavigate }) {
     setSelectedCity(city);
     setSearchQuery('');
     setShowDropdown(false);
-    if (dataMode === 'demo') {
-      if (city.name.includes('Delhi')) setActiveScenarioId('delhi_smog');
-      else if (city.name.includes('Mumbai')) setActiveScenarioId('mumbai_monsoon');
-      else if (city.name.includes('Goa')) setActiveScenarioId('goa_beach');
-      else if (city.name.includes('Jaipur')) setActiveScenarioId('jaipur_heat');
-      else setActiveScenarioId('pleasant');
-    }
   };
 
   const handleLocateMe = () => {
@@ -182,43 +171,21 @@ export default function Navbar({ currentPage = 'home', onNavigate }) {
           {/* Right Action Controls: Mode Switcher + User Profile Badge + Lang */}
           <div className="flex items-center gap-2">
             
-            {/* Live vs Demo */}
-            <div className="inline-flex p-0.5 bg-slate-900 rounded-xl border border-slate-800 text-[11px]">
-              <button
-                onClick={() => setDataMode('real')}
-                className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1 transition ${
-                  dataMode === 'real' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Radio className={`w-3 h-3 ${dataMode === 'real' ? 'animate-pulse' : ''}`} />
-                <span className="hidden sm:inline">Live</span>
-              </button>
-              <button
-                onClick={() => setDataMode('demo')}
-                className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1 transition ${
-                  dataMode === 'demo' ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Sparkles className="w-3 h-3" />
-                <span className="hidden sm:inline">Demo</span>
-              </button>
+            {/* Live Meteorological Telemetry Status */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-semibold text-emerald-400">
+              <Radio className="w-3 h-3 animate-pulse text-emerald-400" />
+              <span className="hidden sm:inline">Live NWP Feed</span>
             </div>
 
-            {/* Demo Scenario Picker */}
-            {dataMode === 'demo' && (
-              <select
-                value={activeScenarioId}
-                onChange={(e) => setActiveScenarioId(e.target.value)}
-                className="bg-slate-900 border border-amber-500/40 text-amber-300 text-[11px] font-medium rounded-xl px-2 py-1 pr-6 focus:outline-none appearance-none cursor-pointer max-w-[120px] truncate"
-              >
-                <option value="delhi_smog">Delhi Smog (AQI 412)</option>
-                <option value="mumbai_monsoon">Mumbai Monsoon</option>
-                <option value="goa_beach">Goa Swell</option>
-                <option value="punjab_frost">Punjab Frost</option>
-                <option value="jaipur_heat">Jaipur Heat</option>
-                <option value="pleasant">Bengaluru</option>
-              </select>
-            )}
+            {/* Refresh Satellite Feed Button */}
+            <button
+              onClick={refreshData}
+              disabled={loading}
+              className="p-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition"
+              title="Refresh Live Satellite Telemetry"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-sky-400' : ''}`} />
+            </button>
 
             {/* User Profile Avatar & Login Button */}
             <button

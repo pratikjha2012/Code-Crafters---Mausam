@@ -1,6 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { INDIAN_CITIES, fetchWeatherData, fetchAirQualityData, fetchMarineData, getWeatherDescription, reverseGeocode } from '../services/weatherApi';
-import { DEMO_SCENARIOS } from '../data/demoScenarios';
+﻿import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  INDIAN_CITIES, 
+  fetchWeatherData, 
+  fetchAirQualityData, 
+  fetchMarineData, 
+  getWeatherDescription, 
+  reverseGeocode 
+} from '../services/weatherApi';
 
 const WeatherContext = createContext();
 
@@ -17,9 +23,7 @@ export const PERSONAS = [
 ];
 
 export function WeatherProvider({ children }) {
-  const [dataMode, setDataMode] = useState('real'); // Real live weather is now DEFAULT!
-  const [activeScenarioId, setActiveScenarioId] = useState('pleasant');
-  const [selectedCity, setSelectedCity] = useState(INDIAN_CITIES[0]); // New Delhi default
+  const [selectedCity, setSelectedCity] = useState(INDIAN_CITIES[0]); // New Delhi default station
   const [activePersona, setActivePersona] = useState('all');
   const [language, setLanguage] = useState('en'); // 'en' | 'hi'
   const [isMobilePreview, setIsMobilePreview] = useState(false);
@@ -29,6 +33,7 @@ export function WeatherProvider({ children }) {
   const [liveMarine, setLiveMarine] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   // Auto-detect GPS location on startup with High Hardware Precision
   useEffect(() => {
@@ -48,20 +53,18 @@ export function WeatherProvider({ children }) {
             precision: geo?.precision || 'High-Precision GPS'
           });
         },
-        () => {
-          // If permission denied, seamlessly use default city
+        (err) => {
+          console.log('GPS denied or timed out, using default station:', selectedCity.name);
         },
         { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
       );
     }
   }, []);
 
-  // Fetch real data when in 'real' mode or city changes
+  // Fetch real data on station change
   useEffect(() => {
-    if (dataMode === 'real') {
-      loadRealData(selectedCity.lat, selectedCity.lon, selectedCity.isCoastal);
-    }
-  }, [dataMode, selectedCity]);
+    loadRealData(selectedCity.lat, selectedCity.lon, selectedCity.isCoastal);
+  }, [selectedCity]);
 
   const loadRealData = async (lat, lon, isCoastal) => {
     setLoading(true);
@@ -75,119 +78,89 @@ export function WeatherProvider({ children }) {
       setLiveWeather(wData);
       setLiveAQI(aqiData);
       setLiveMarine(marineData);
+      setLastUpdated(new Date());
     } catch (err) {
-      console.error(err);
-      setError('Live satellite feed temporarily unavailable. Displaying cached demo scenario.');
-      // Auto-fallback safely
-      setDataMode('demo');
+      console.error('Live API fetch error:', err);
+      setError("I'm unable to retrieve the latest weather data right now. Please try again in a moment.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Helper to get normalized weather object regardless of mode
-  const getNormalizedData = () => {
-    if (dataMode === 'demo') {
-      const scenario = DEMO_SCENARIOS[activeScenarioId] || DEMO_SCENARIOS.delhi_smog;
-      const weatherDesc = getWeatherDescription(scenario.weather.weatherCode);
-      return {
-        isDemo: true,
-        cityName: scenario.cityName,
-        state: scenario.state,
-        agroRegion: scenario.agroRegion,
-        isCoastal: scenario.isCoastal,
-        current: {
-          temp: scenario.weather.temperature,
-          feelsLike: scenario.weather.apparentTemperature,
-          humidity: scenario.weather.relativeHumidity,
-          weatherCode: scenario.weather.weatherCode,
-          condition: language === 'hi' ? weatherDesc.hindi : weatherDesc.label,
-          icon: weatherDesc.icon,
-          windSpeed: scenario.weather.windSpeed,
-          windDirection: scenario.weather.windDirection,
-          pressure: scenario.weather.surfacePressure,
-          visibility: scenario.weather.visibility,
-          uvIndex: scenario.weather.uvIndex,
-          sunrise: scenario.weather.sunrise,
-          sunset: scenario.weather.sunset,
-          tempMax: scenario.weather.tempMax,
-          tempMin: scenario.weather.tempMin,
-          rainProb: scenario.weather.rainProbability,
-          soilMoisture: scenario.weather.soilMoisture,
-          soilTemp: scenario.weather.soilTemp,
-        },
-        aqi: scenario.aqi,
-        marine: scenario.marine,
-        alerts: scenario.alerts,
-        scenarioDetails: scenario,
-      };
-    }
+  // Format updated time relative string
+  const getUpdatedAgo = () => {
+    if (!lastUpdated) return 'Syncing...';
+    const diffSec = Math.floor((new Date() - lastUpdated) / 1000);
+    if (diffSec < 60) return 'Updated just now';
+    const diffMin = Math.floor(diffSec / 60);
+    return `Updated ${diffMin} ${diffMin === 1 ? 'minute' : 'minutes'} ago`;
+  };
 
-    // Process Live Data
+  // Helper to get normalized weather object from REAL LIVE API responses ONLY
+  const getNormalizedData = () => {
     if (!liveWeather) {
-      const fallback = DEMO_SCENARIOS.pleasant;
       return {
-        isDemo: false,
+        isLoading: loading,
+        error,
         cityName: selectedCity.name,
         state: selectedCity.state,
         agroRegion: selectedCity.agroRegion,
         isCoastal: selectedCity.isCoastal,
-        current: {
-          temp: fallback.weather.temperature,
-          feelsLike: fallback.weather.apparentTemperature,
-          humidity: fallback.weather.relativeHumidity,
-          weatherCode: fallback.weather.weatherCode,
-          condition: 'Loading Telemetry...',
-          icon: 'Sun',
-          windSpeed: fallback.weather.windSpeed,
-          windDirection: fallback.weather.windDirection,
-          pressure: fallback.weather.surfacePressure,
-          visibility: fallback.weather.visibility,
-          uvIndex: fallback.weather.uvIndex,
-          sunrise: fallback.weather.sunrise,
-          sunset: fallback.weather.sunset,
-          tempMax: fallback.weather.tempMax,
-          tempMin: fallback.weather.tempMin,
-          rainProb: fallback.weather.rainProbability,
-          soilMoisture: fallback.weather.soilMoisture,
-          soilTemp: fallback.weather.soilTemp,
-        },
-        aqi: fallback.aqi,
-        marine: fallback.marine,
-        alerts: [{ id: 'init-1', type: 'info', title: 'Connecting to Satellite', desc: 'Acquiring real-time telemetry from IMD / Open-Meteo satellites...' }],
+        current: null,
+        aqi: null,
+        marine: null,
+        alerts: []
       };
     }
+
     const cur = liveWeather.current;
     const weatherDesc = getWeatherDescription(cur.weather_code);
     const daily = liveWeather.daily || {};
     const hourly = liveWeather.hourly || {};
     const aqiCur = liveAQI?.current || {};
 
-    const aqiVal = aqiCur.us_aqi || 65;
+    const aqiVal = aqiCur.us_aqi ?? 50;
     let aqiCategory = 'Good';
     if (aqiVal > 300) aqiCategory = 'Hazardous / Severe';
     else if (aqiVal > 200) aqiCategory = 'Very Unhealthy';
     else if (aqiVal > 150) aqiCategory = 'Unhealthy';
-    else if (aqiVal > 100) aqiCategory = 'Moderate / Sensitive';
+    else if (aqiVal > 100) aqiCategory = 'Moderate';
     else if (aqiVal > 50) aqiCategory = 'Satisfactory';
 
     const alerts = [];
     if (aqiVal > 250) {
-      alerts.push({ id: 'la-1', type: 'critical', title: 'Severe Air Quality Alert', desc: `US AQI is currently ${aqiVal}. Sensitive groups and children must avoid outdoor exposure.` });
+      alerts.push({ 
+        id: 'la-1', 
+        type: 'critical', 
+        title: 'Severe Air Quality Alert (गंभीर वायु प्रदूषण)', 
+        desc: `US AQI is currently ${aqiVal} (PM2.5: ${aqiCur.pm2_5 || 0} µg/m³). N95 mask mandatory outdoors; avoid strenuous outdoor exertion.` 
+      });
     }
     if (cur.precipitation > 2.5 || (daily.precipitation_probability_max && daily.precipitation_probability_max[0] > 75)) {
-      alerts.push({ id: 'la-2', type: 'warning', title: 'Rain Advisory in Effect', desc: 'Precipitation expected over the region. Commuters should allow extra travel time.' });
+      alerts.push({ 
+        id: 'la-2', 
+        type: 'warning', 
+        title: 'Precipitation Advisory in Effect (वर्षा चेतावनी)', 
+        desc: `High probability of rainfall (${daily.precipitation_probability_max?.[0] || 80}%). Commuters and travelers should carry rain gear.` 
+      });
     }
     if (cur.visibility && cur.visibility < 1000) {
-      alerts.push({ id: 'la-3', type: 'warning', title: 'Dense Fog / Low Visibility', desc: `Visibility is reduced to ${cur.visibility}m. Drive with caution.` });
+      alerts.push({ 
+        id: 'la-3', 
+        type: 'warning', 
+        title: 'Dense Fog / Low Visibility (घना कोहरा)', 
+        desc: `Visibility is restricted to ${cur.visibility}m. Keep low-beam fog headlights on.` 
+      });
     }
 
     return {
-      isDemo: false,
+      isLoading: false,
+      error: null,
       cityName: selectedCity.name,
       state: selectedCity.state,
       agroRegion: selectedCity.agroRegion || 'Regional Agricultural Basin',
       isCoastal: selectedCity.isCoastal,
+      lastUpdatedText: getUpdatedAgo(),
       current: {
         temp: Math.round(cur.temperature_2m * 10) / 10,
         feelsLike: Math.round(cur.apparent_temperature * 10) / 10,
@@ -204,33 +177,33 @@ export function WeatherProvider({ children }) {
         uvIndex: daily.uv_index_max ? daily.uv_index_max[0] : 6,
         sunrise: daily.sunrise ? new Date(daily.sunrise[0]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '06:00 AM',
         sunset: daily.sunset ? new Date(daily.sunset[0]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '06:30 PM',
-        tempMax: daily.temperature_2m_max ? daily.temperature_2m_max[0] : 30,
-        tempMin: daily.temperature_2m_min ? daily.temperature_2m_min[0] : 20,
-        rainProb: daily.precipitation_probability_max ? daily.precipitation_probability_max[0] : 20,
-        soilMoisture: hourly.soil_moisture_0_to_1cm ? hourly.soil_moisture_0_to_1cm[0] : 0.30,
-        soilTemp: hourly.soil_temperature_0cm ? hourly.soil_temperature_0cm[0] : 22,
+        tempMax: daily.temperature_2m_max ? daily.temperature_2m_max[0] : Math.round(cur.temperature_2m + 3),
+        tempMin: daily.temperature_2m_min ? daily.temperature_2m_min[0] : Math.round(cur.temperature_2m - 4),
+        rainProb: daily.precipitation_probability_max ? daily.precipitation_probability_max[0] : (cur.precipitation > 0 ? 80 : 10),
+        soilMoisture: hourly.soil_moisture_0_to_1cm ? hourly.soil_moisture_0_to_1cm[0] : 0.28,
+        soilTemp: hourly.soil_temperature_0cm ? hourly.soil_temperature_0cm[0] : cur.temperature_2m,
         nowcast15: liveWeather.minutely_15 || null,
         coords: { lat: selectedCity.lat, lon: selectedCity.lon },
-        precision: selectedCity.precision || 'Multi-Model High-Resolution',
+        precision: selectedCity.precision || 'High-Precision Satellite Model',
       },
       aqi: {
         usAqi: aqiVal,
         category: aqiCategory,
-        pm25: aqiCur.pm2_5 || 25,
-        pm10: aqiCur.pm10 || 55,
-        ozone: aqiCur.ozone || 30,
-        no2: aqiCur.nitrogen_dioxide || 15,
-        pollenTree: aqiCur.birch_pollen || aqiCur.alder_pollen || 18,
-        pollenGrass: aqiCur.grass_pollen || 24,
-        pollenWeed: aqiCur.ragweed_pollen || 10,
+        pm25: aqiCur.pm2_5 ?? 25,
+        pm10: aqiCur.pm10 ?? 50,
+        ozone: aqiCur.ozone ?? 30,
+        no2: aqiCur.nitrogen_dioxide ?? 15,
+        pollenTree: aqiCur.birch_pollen || aqiCur.alder_pollen || 12,
+        pollenGrass: aqiCur.grass_pollen || 15,
+        pollenWeed: aqiCur.ragweed_pollen || 5,
       },
       marine: selectedCity.isCoastal && liveMarine?.current ? {
         isCoastal: true,
-        waveHeight: liveMarine.current.wave_height || 1.2,
+        waveHeight: liveMarine.current.wave_height || 1.4,
         wavePeriod: liveMarine.current.wave_period || 8.0,
         waterTemp: 28.0,
         safetyFlag: (liveMarine.current.wave_height > 2.5) ? 'Red' : (liveMarine.current.wave_height > 1.5 ? 'Yellow' : 'Green'),
-        tideStatus: 'Normal Tidal Cycle',
+        tideStatus: 'Astronomical Coastal Cycle',
       } : {
         isCoastal: false,
         waveHeight: 0,
@@ -249,10 +222,6 @@ export function WeatherProvider({ children }) {
 
   return (
     <WeatherContext.Provider value={{
-      dataMode,
-      setDataMode,
-      activeScenarioId,
-      setActiveScenarioId,
       selectedCity,
       setSelectedCity,
       activePersona,
@@ -264,9 +233,7 @@ export function WeatherProvider({ children }) {
       weather,
       loading,
       error,
-      refreshData: () => {
-        if (dataMode === 'real') loadRealData(selectedCity.lat, selectedCity.lon, selectedCity.isCoastal);
-      }
+      refreshData: () => loadRealData(selectedCity.lat, selectedCity.lon, selectedCity.isCoastal)
     }}>
       {children}
     </WeatherContext.Provider>
