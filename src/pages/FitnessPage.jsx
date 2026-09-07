@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useWeather } from '../context/WeatherContext';
 import { useUser } from '../context/UserContext';
 import FitnessModule from '../components/personas/FitnessModule';
@@ -21,7 +21,7 @@ export default function FitnessPage({ onBack }) {
   const [selectedHour, setSelectedHour] = useState(7); // 7 AM
   const [userWeight, setUserWeight] = useState(70); // 70 kg
 
-  if (!weather) return null;
+  if (!weather || !weather.current || !weather.aqi) return null;
   const { current, aqi } = weather;
 
   // Compute metrics for the selected workout hour

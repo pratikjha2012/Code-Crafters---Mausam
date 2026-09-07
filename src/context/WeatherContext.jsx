@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
   INDIAN_CITIES, 
   fetchWeatherData, 
@@ -98,19 +98,8 @@ export function WeatherProvider({ children }) {
 
   // Helper to get normalized weather object from REAL LIVE API responses ONLY
   const getNormalizedData = () => {
-    if (!liveWeather) {
-      return {
-        isLoading: loading,
-        error,
-        cityName: selectedCity.name,
-        state: selectedCity.state,
-        agroRegion: selectedCity.agroRegion,
-        isCoastal: selectedCity.isCoastal,
-        current: null,
-        aqi: null,
-        marine: null,
-        alerts: []
-      };
+    if (!liveWeather || !liveWeather.current) {
+      return null;
     }
 
     const cur = liveWeather.current;

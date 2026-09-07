@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { useWeather, PERSONAS } from '../context/WeatherContext';
 import { useUser } from '../context/UserContext';
 import OverviewHero from '../components/OverviewHero';
@@ -25,7 +25,7 @@ export default function HomePage({ onNavigate }) {
   const { weather, language } = useWeather();
   const { user, setIsProfileModalOpen } = useUser();
 
-  if (!weather) return null;
+  if (!weather || !weather.current || !weather.aqi) return null;
   const { current, aqi } = weather;
 
   // Personalized Advisory computation based on user allergies and current weather

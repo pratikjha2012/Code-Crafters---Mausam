@@ -62,7 +62,6 @@ export default function Navbar({ currentPage = 'home', onNavigate }) {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          setDataMode('real');
           const lat = position.coords.latitude;
           const lon = position.coords.longitude;
           const geo = await reverseGeocode(lat, lon);

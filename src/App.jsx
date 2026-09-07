@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { WeatherProvider, useWeather } from './context/WeatherContext';
 import { UserProvider, useUser } from './context/UserContext';
 import Navbar from './components/Navbar';
@@ -18,16 +18,59 @@ import TravelPage from './pages/TravelPage';
 import FamilyPage from './pages/FamilyPage';
 import EventPage from './pages/EventPage';
 
-import { Smartphone, Monitor } from 'lucide-react';
+import { Smartphone, Monitor, Radio, RefreshCw, AlertTriangle } from 'lucide-react';
 
 function DashboardApp() {
-  const { isMobilePreview, setIsMobilePreview } = useWeather();
+  const { isMobilePreview, setIsMobilePreview, weather, loading, error, refreshData, selectedCity } = useWeather();
   const [currentPage, setCurrentPage] = useState('home');
 
   const navigateTo = (pageId) => {
     setCurrentPage(pageId);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Loading Screen: Connecting to Live Telemetry
+  if (loading && !weather) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center space-y-5 p-6 select-none">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-full border-4 border-sky-500/20 border-t-sky-400 animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Radio className="w-6 h-6 text-sky-400 animate-pulse" />
+          </div>
+        </div>
+        <div className="text-center space-y-2 max-w-sm">
+          <h2 className="text-xl font-bold tracking-tight bg-gradient-to-r from-sky-400 via-white to-blue-200 bg-clip-text text-transparent">
+            भारत मौसम विज्ञान विभाग • MAUSAM
+          </h2>
+          <p className="text-xs text-slate-400 flex items-center justify-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>Connecting to live NWP satellite station telemetry ({selectedCity?.name || 'Local'})...</span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error Recovery Screen: If API fetch fails
+  if (error && !weather) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center space-y-5 p-6">
+        <div className="p-4 rounded-2xl bg-red-950/50 border border-red-800/60 text-red-300">
+          <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-red-400" />
+          <h3 className="font-bold text-center text-sm">Station Telemetry Sync Issue</h3>
+          <p className="text-xs text-slate-400 text-center mt-1">{error}</p>
+        </div>
+        <button
+          onClick={refreshData}
+          className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs flex items-center gap-2 shadow-lg transition"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span>Retry Live Connection</span>
+        </button>
+      </div>
+    );
+  }
 
   const renderActivePage = () => {
     switch (currentPage) {
@@ -121,12 +164,56 @@ function DashboardApp() {
   );
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Mausam ErrorBoundary caught:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 text-center space-y-4">
+          <div className="p-4 rounded-full bg-red-950/80 border border-red-700 text-red-400">
+            <AlertTriangle className="w-10 h-10 animate-bounce" />
+          </div>
+          <h2 className="text-xl font-bold text-white">भारत मौसम विज्ञान विभाग • MAUSAM</h2>
+          <p className="text-xs text-slate-400 max-w-md">
+            The application encountered a display refresh requirement while connecting to live telemetry.
+          </p>
+          <button
+            onClick={() => {
+              try { localStorage.clear(); } catch (e) {}
+              window.location.reload();
+            }}
+            className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-lg transition flex items-center gap-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Reset Cache & Reload Live Telemetry</span>
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <UserProvider>
-      <WeatherProvider>
-        <DashboardApp />
-      </WeatherProvider>
-    </UserProvider>
+    <ErrorBoundary>
+      <UserProvider>
+        <WeatherProvider>
+          <DashboardApp />
+        </WeatherProvider>
+      </UserProvider>
+    </ErrorBoundary>
   );
 }

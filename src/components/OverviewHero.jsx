@@ -25,9 +25,9 @@ import {
 } from 'lucide-react';
 
 export default function OverviewHero() {
-  const { weather, language, dataMode } = useWeather();
+  const { weather, language } = useWeather();
 
-  if (!weather) return null;
+  if (!weather || !weather.current || !weather.aqi) return null;
 
   const { current, aqi, marine, alerts, cityName, state } = weather;
 
