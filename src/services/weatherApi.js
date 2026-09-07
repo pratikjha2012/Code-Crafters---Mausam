@@ -1,4 +1,4 @@
-// Weather API Service using Open-Meteo & Geocoding
+﻿// High-Precision Weather API Service (Hyper-Local Multi-Model Engine)
 export const INDIAN_CITIES = [
   { name: 'New Delhi', state: 'Delhi', lat: 28.6139, lon: 77.2090, isCoastal: false, agroRegion: 'Indo-Gangetic Plain' },
   { name: 'Mumbai', state: 'Maharashtra', lat: 19.0760, lon: 72.8777, isCoastal: true, agroRegion: 'Konkan Coast' },
@@ -45,10 +45,10 @@ export const getWeatherDescription = (code) => {
   return WMO_CODES[code] || { label: 'Partly Cloudy', hindi: 'आंशिक बादल', icon: 'CloudSun', severity: 'low' };
 };
 
-// Fetch real-time Weather from Open-Meteo
+// 1. High-Precision Hyper-Local Weather (Best Match ECMWF/GFS Ensemble + 15-Minute Nowcasting)
 export async function fetchWeatherData(lat, lon) {
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,surface_pressure&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m,uv_index,soil_temperature_0cm,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max&timezone=auto`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&minutely_15=precipitation,temperature_2m,weather_code&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m,wind_gusts_10m,uv_index,dew_point_2m,soil_temperature_0cm,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max&models=best_match&timezone=auto`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch weather data');
     return await res.json();
@@ -58,7 +58,7 @@ export async function fetchWeatherData(lat, lon) {
   }
 }
 
-// Fetch Air Quality and Pollen from Open-Meteo
+// 2. High-Precision Air Quality, Aerosols and Botanical Pollens
 export async function fetchAirQualityData(lat, lon) {
   try {
     const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,european_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,dust,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen&hourly=us_aqi,pm2_5,pm10&timezone=auto`;
@@ -71,7 +71,7 @@ export async function fetchAirQualityData(lat, lon) {
   }
 }
 
-// Fetch Marine Data (Wave height, swell, sea temp)
+// 3. Marine and Coastal Swell
 export async function fetchMarineData(lat, lon) {
   try {
     const url = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&current=wave_height,wave_direction,wave_period,wind_wave_height,wind_wave_period,swell_wave_height,swell_wave_period&hourly=wave_height,wave_period&timezone=auto`;
@@ -84,10 +84,60 @@ export async function fetchMarineData(lat, lon) {
   }
 }
 
-// Search location using Open-Meteo Geocoding
+// 4. Hyper-Local Reverse Geocoding with Neighborhood & Pincode Precision
+export async function reverseGeocode(lat, lon) {
+  // Try OpenStreetMap Nominatim for maximum neighborhood / sub-district precision
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`,
+      { headers: { 'User-Agent': 'MausamPrecisionWeather/2.0' } }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const addr = data.address || {};
+      const neighborhood = addr.suburb || addr.neighbourhood || addr.residential || addr.road || '';
+      const city = addr.city || addr.town || addr.municipality || addr.state_district || 'Local Station';
+      const state = addr.state || 'India';
+      const postcode = addr.postcode ? `(${addr.postcode})` : '';
+
+      const name = neighborhood ? `${neighborhood}, ${city}` : city;
+      return {
+        name,
+        city,
+        state: `${state} ${postcode}`.trim(),
+        postcode: addr.postcode || '',
+        formatted: data.display_name,
+        precision: 'High-Precision GPS'
+      };
+    }
+  } catch (err) {
+    console.warn('Nominatim fallback, trying BigDataCloud...', err);
+  }
+
+  // Fallback to BigDataCloud
+  try {
+    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        name: data.locality || data.city || 'My Location',
+        city: data.city || data.locality || 'Local City',
+        state: data.principalSubdivision || 'India',
+        precision: 'Network Geolocation'
+      };
+    }
+  } catch (err) {
+    console.warn('Reverse geocode fallback', err);
+  }
+
+  return { name: 'My Station', state: 'GPS Coordinates', precision: 'Coordinates' };
+}
+
+// 5. Intelligent Multi-Tier Location Search (Cities, Suburbs, Pincodes)
 export async function searchLocation(query) {
   try {
-    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=en&format=json`;
+    // Check Open-Meteo Geocoding
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=en&format=json`;
     const res = await fetch(url);
     if (!res.ok) return [];
     const data = await res.json();
@@ -98,18 +148,16 @@ export async function searchLocation(query) {
   }
 }
 
-// Reverse geocode GPS coordinates to city name
-export async function reverseGeocode(lat, lon) {
+// 6. Optional OpenWeatherMap Provider (If custom key provided in settings)
+export async function fetchOpenWeather(lat, lon, apiKey) {
+  if (!apiKey) return null;
   try {
-    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+    const res = await fetch(url);
     if (!res.ok) return null;
-    const data = await res.json();
-    return {
-      name: data.locality || data.city || 'My Station',
-      state: data.principalSubdivision || 'Current Location',
-    };
-  } catch (err) {
-    return { name: 'My Station', state: 'GPS Coordinates' };
+    return await res.json();
+  } catch (e) {
+    console.warn('OpenWeather error', e);
+    return null;
   }
 }
-

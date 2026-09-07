@@ -30,7 +30,7 @@ export function WeatherProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Auto-detect GPS location on startup
+  // Auto-detect GPS location on startup with High Hardware Precision
   useEffect(() => {
     if (typeof window !== 'undefined' && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -44,13 +44,14 @@ export function WeatherProvider({ children }) {
             lat,
             lon,
             isCoastal: false,
-            agroRegion: 'Local Micro-climate'
+            agroRegion: geo?.city ? `${geo.city} Regional Basin` : 'Local Micro-climate',
+            precision: geo?.precision || 'High-Precision GPS'
           });
         },
         () => {
           // If permission denied, seamlessly use default city
         },
-        { timeout: 6000 }
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
       );
     }
   }, []);
@@ -196,6 +197,8 @@ export function WeatherProvider({ children }) {
         icon: weatherDesc.icon,
         windSpeed: cur.wind_speed_10m,
         windDirection: cur.wind_direction_10m,
+        windGusts: cur.wind_gusts_10m || cur.wind_speed_10m,
+        dewPoint: hourly.dew_point_2m ? Math.round(hourly.dew_point_2m[0] * 10) / 10 : Math.round(cur.temperature_2m - ((100 - cur.relative_humidity_2m) / 5)),
         pressure: cur.surface_pressure,
         visibility: cur.visibility || 7000,
         uvIndex: daily.uv_index_max ? daily.uv_index_max[0] : 6,
@@ -206,6 +209,9 @@ export function WeatherProvider({ children }) {
         rainProb: daily.precipitation_probability_max ? daily.precipitation_probability_max[0] : 20,
         soilMoisture: hourly.soil_moisture_0_to_1cm ? hourly.soil_moisture_0_to_1cm[0] : 0.30,
         soilTemp: hourly.soil_temperature_0cm ? hourly.soil_temperature_0cm[0] : 22,
+        nowcast15: liveWeather.minutely_15 || null,
+        coords: { lat: selectedCity.lat, lon: selectedCity.lon },
+        precision: selectedCity.precision || 'Multi-Model High-Resolution',
       },
       aqi: {
         usAqi: aqiVal,

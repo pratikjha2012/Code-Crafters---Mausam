@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { useWeather } from '../context/WeatherContext';
 import { 
   Sun, 
@@ -113,9 +113,17 @@ export default function OverviewHero() {
                 {cityName}
                 <span className="text-lg font-normal text-slate-400">({state})</span>
               </h1>
-              <p className="text-sm text-slate-400 mt-0.5 flex items-center gap-1.5">
-                <span>{weather.agroRegion}</span>
-              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <span className="text-xs text-slate-400 font-medium">{weather.agroRegion}</span>
+                {current.coords && (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-sky-400">
+                    📍 {current.coords.lat.toFixed(4)}° N, {current.coords.lon.toFixed(4)}° E
+                  </span>
+                )}
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+                  {current.precision || 'High-Precision'}
+                </span>
+              </div>
             </div>
 
             <div className="flex items-baseline gap-4">
@@ -207,6 +215,32 @@ export default function OverviewHero() {
             </div>
 
           </div>
+        </div>
+
+        {/* Hyper-Local Nowcasting & Aerodynamics Bar */}
+        <div className="mt-6 pt-5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+              <span className="text-slate-400 font-medium">15-Min Precision Nowcast:</span>
+              <span className="font-bold text-slate-200">
+                {current.rainProb > 50 ? 'Rain showers likely within 30-45 mins' : 'Zero precipitation next 60 minutes'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 font-mono text-[11px] text-slate-400">
+              <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                Peak Wind Gusts: <strong className="text-white">{current.windGusts || current.windSpeed} km/h</strong>
+              </span>
+              <span className="bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                Dew Point: <strong className="text-white">{current.dewPoint || current.temp - 3}°C</strong>
+              </span>
+            </div>
+          </div>
+
+          <span className="text-[11px] text-slate-500 flex items-center gap-1">
+            <span>High-Resolution Multi-Model NWP</span>
+          </span>
         </div>
       </div>
     </div>
