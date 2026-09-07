@@ -1,93 +1,67 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { WeatherProvider, useWeather } from './context/WeatherContext';
+import { UserProvider, useUser } from './context/UserContext';
 import Navbar from './components/Navbar';
-import OverviewHero from './components/OverviewHero';
-import PersonaSelector from './components/PersonaSelector';
-import HealthModule from './components/personas/HealthModule';
-import FitnessModule from './components/personas/FitnessModule';
-import BeachModule from './components/personas/BeachModule';
-import TravelModule from './components/personas/TravelModule';
-import FamilyModule from './components/personas/FamilyModule';
-import AgriModule from './components/personas/AgriModule';
-import CommuteModule from './components/personas/CommuteModule';
-import EventModule from './components/personas/EventModule';
-import WeatherMap from './components/WeatherMap';
+import OnboardingModal from './components/OnboardingModal';
+import UserProfileModal from './components/UserProfileModal';
+import WeatherChatbot from './components/WeatherChatbot';
 import Footer from './components/Footer';
-import { Smartphone, Monitor, ChevronUp, Map, Eye, EyeOff } from 'lucide-react';
 
-function DashboardContent() {
-  const { activePersona, isMobilePreview, setIsMobilePreview } = useWeather();
-  const [showMap, setShowMap] = useState(true);
+// Dedicated Page Views
+import HomePage from './pages/HomePage';
+import HealthPage from './pages/HealthPage';
+import FitnessPage from './pages/FitnessPage';
+import BeachPage from './pages/BeachPage';
+import AgriPage from './pages/AgriPage';
+import CommutePage from './pages/CommutePage';
+import TravelPage from './pages/TravelPage';
+import FamilyPage from './pages/FamilyPage';
+import EventPage from './pages/EventPage';
 
-  const renderPersonaModules = () => {
-    if (activePersona === 'health') return <HealthModule />;
-    if (activePersona === 'fitness') return <FitnessModule />;
-    if (activePersona === 'beach') return <BeachModule />;
-    if (activePersona === 'travel') return <TravelModule />;
-    if (activePersona === 'family') return <FamilyModule />;
-    if (activePersona === 'agri') return <AgriModule />;
-    if (activePersona === 'commute') return <CommuteModule />;
-    if (activePersona === 'events') return <EventModule />;
+import { Smartphone, Monitor } from 'lucide-react';
 
-    // 'all' - Show all 8 persona modules in logical priority order
-    return (
-      <div className="space-y-8">
-        <section id="mod-health" className="scroll-mt-24">
-          <HealthModule />
-        </section>
-        <section id="mod-fitness" className="scroll-mt-24">
-          <FitnessModule />
-        </section>
-        <section id="mod-commute" className="scroll-mt-24">
-          <CommuteModule />
-        </section>
-        <section id="mod-family" className="scroll-mt-24">
-          <FamilyModule />
-        </section>
-        <section id="mod-beach" className="scroll-mt-24">
-          <BeachModule />
-        </section>
-        <section id="mod-agri" className="scroll-mt-24">
-          <AgriModule />
-        </section>
-        <section id="mod-travel" className="scroll-mt-24">
-          <TravelModule />
-        </section>
-        <section id="mod-events" className="scroll-mt-24">
-          <EventModule />
-        </section>
-      </div>
-    );
+function DashboardApp() {
+  const { isMobilePreview, setIsMobilePreview } = useWeather();
+  const [currentPage, setCurrentPage] = useState('home');
+
+  const navigateTo = (pageId) => {
+    setCurrentPage(pageId);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const coreContent = (
-    <div className="space-y-6">
-      <OverviewHero />
+  const renderActivePage = () => {
+    switch (currentPage) {
+      case 'health':
+        return <HealthPage onBack={() => navigateTo('home')} />;
+      case 'fitness':
+        return <FitnessPage onBack={() => navigateTo('home')} />;
+      case 'beach':
+        return <BeachPage onBack={() => navigateTo('home')} />;
+      case 'agri':
+        return <AgriPage onBack={() => navigateTo('home')} />;
+      case 'commute':
+        return <CommutePage onBack={() => navigateTo('home')} />;
+      case 'travel':
+        return <TravelPage onBack={() => navigateTo('home')} />;
+      case 'family':
+        return <FamilyPage onBack={() => navigateTo('home')} />;
+      case 'events':
+        return <EventPage onBack={() => navigateTo('home')} />;
+      case 'home':
+      default:
+        return <HomePage onNavigate={navigateTo} />;
+    }
+  };
 
-      {/* Map Toggle & Geospatial Station Radar */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-2">
-          <button
-            onClick={() => setShowMap(!showMap)}
-            className="text-xs font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 transition"
-          >
-            <Map className="w-3.5 h-3.5" />
-            <span>{showMap ? 'Hide Station Radar Map' : 'Show Interactive Station Radar Map'}</span>
-          </button>
-          <span className="text-[11px] text-slate-500">Google Maps Satellite Telemetry</span>
-        </div>
-
-        {showMap && <WeatherMap />}
-      </div>
-
-      <PersonaSelector />
-      {renderPersonaModules()}
+  const pageContent = (
+    <div className="w-full">
+      {renderActivePage()}
     </div>
   );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      <Navbar />
+      <Navbar currentPage={currentPage} onNavigate={navigateTo} />
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {isMobilePreview ? (
@@ -95,7 +69,7 @@ function DashboardContent() {
           <div className="flex flex-col items-center justify-center my-4">
             <div className="flex items-center gap-3 mb-4 text-xs text-slate-400 bg-slate-900 px-4 py-2 rounded-full border border-slate-800">
               <Smartphone className="w-4 h-4 text-sky-400" />
-              <span>Previewing as: <strong>'Mausam' Mobile Application (iOS / Android)</strong></span>
+              <span>Previewing: <strong>'Mausam' Mobile App Viewport</strong></span>
               <button 
                 onClick={() => setIsMobilePreview(false)}
                 className="text-sky-400 font-bold hover:underline ml-2"
@@ -118,7 +92,7 @@ function DashboardContent() {
 
               {/* Scrollable Mobile App Body */}
               <div className="max-h-[750px] overflow-y-auto p-4 space-y-6 scrollbar-none bg-slate-950">
-                {coreContent}
+                {pageContent}
               </div>
 
               {/* Bottom Home Bar */}
@@ -128,10 +102,19 @@ function DashboardContent() {
             </div>
           </div>
         ) : (
-          /* Expansive Responsive Dashboard View */
-          coreContent
+          /* Expansive Responsive Desktop View */
+          pageContent
         )}
       </main>
+
+      {/* Floating Multilingual Weather Chatbot (Mausam AI Mitra) */}
+      <WeatherChatbot />
+
+      {/* Onboarding Wizard (For first-time personalization & allergies) */}
+      <OnboardingModal />
+
+      {/* Profile & Sensitivity Editor Modal */}
+      <UserProfileModal />
 
       <Footer />
     </div>
@@ -140,8 +123,10 @@ function DashboardContent() {
 
 export default function App() {
   return (
-    <WeatherProvider>
-      <DashboardContent />
-    </WeatherProvider>
+    <UserProvider>
+      <WeatherProvider>
+        <DashboardApp />
+      </WeatherProvider>
+    </UserProvider>
   );
 }
