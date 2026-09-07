@@ -50,11 +50,15 @@ function DashboardApp() {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col items-center justify-center space-y-6 p-6 select-none transition-colors">
         
-        {/* Animated atmospheric cloud layer */}
+        {/* Official IMD Emblem with atmospheric glow */}
         <div className="relative w-28 h-28 flex items-center justify-center">
-          <div className="absolute w-24 h-24 rounded-full bg-sky-400/20 blur-xl animate-pulse" />
-          <Cloud className="w-20 h-20 text-sky-500 animate-cloud-drift drop-shadow-md" />
-          <div className="absolute -bottom-1 flex gap-1">
+          <div className="absolute w-24 h-24 rounded-full bg-sky-400/25 dark:bg-sky-500/20 blur-2xl animate-pulse" />
+          <img 
+            src="/imd-logo.png" 
+            alt="India Meteorological Department Emblem" 
+            className="w-20 h-20 object-contain drop-shadow-lg animate-pulse-slow"
+          />
+          <div className="absolute -bottom-2 flex gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping" />
             <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping" style={{ animationDelay: '0.2s' }} />
             <span className="w-1.5 h-1.5 rounded-full bg-sky-600 animate-ping" style={{ animationDelay: '0.4s' }} />

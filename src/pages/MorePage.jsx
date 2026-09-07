@@ -274,10 +274,21 @@ export default function MorePage({ onNavigate }) {
       </div>
 
       {/* ABOUT & PROVENANCE */}
-      <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 space-y-2">
-        <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-bold">
-          <Info className="w-4 h-4 text-sky-500" />
-          <span>India Meteorological Department (IMD) • Ministry of Earth Sciences</span>
+      <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 space-y-3">
+        <div className="flex items-center gap-3">
+          <img 
+            src="/imd-logo.png" 
+            alt="India Meteorological Department Emblem" 
+            className="w-12 h-12 object-contain shrink-0 drop-shadow-sm" 
+          />
+          <div>
+            <div className="text-slate-800 dark:text-slate-200 font-extrabold text-sm">
+              India Meteorological Department (IMD)
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+              Ministry of Earth Sciences (MoES), Government of India
+            </div>
+          </div>
         </div>
         <p className="leading-relaxed">
           Mausam provides official high-resolution NWP telemetry, Doppler radar imagery, and personalized agro-meteorological advisories across the Indian subcontinent.

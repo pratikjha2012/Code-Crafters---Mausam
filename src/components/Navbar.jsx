@@ -106,9 +106,11 @@ export default function Navbar({ currentPage = 'home', onNavigate }) {
           
           {/* Official Emblem & Branding */}
           <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => onNavigate && onNavigate('home')}>
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-blue-600 via-sky-500 to-indigo-700 flex items-center justify-center shadow-md text-white font-bold text-lg border border-sky-400/30">
-              <CloudSun className="w-5 h-5 text-sky-100" />
-            </div>
+            <img 
+              src="/imd-logo.png" 
+              alt="India Meteorological Department Emblem" 
+              className="w-10 h-10 object-contain drop-shadow-sm transition-transform hover:scale-105"
+            />
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-black text-lg tracking-tight bg-gradient-to-r from-sky-600 via-blue-700 to-indigo-800 dark:from-sky-400 dark:via-white dark:to-blue-200 bg-clip-text text-transparent">
