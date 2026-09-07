@@ -47,7 +47,7 @@ export default function WeatherChatbot() {
   const sessionIdRef = useRef(`session-${Date.now()}`);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(true); // Auto-voice enabled by default
   const [isListening, setIsListening] = useState(false);
   const [playingMessageId, setPlayingMessageId] = useState(null);
   const [lastTelemetryUpdate, setLastTelemetryUpdate] = useState(new Date());
@@ -58,8 +58,8 @@ export default function WeatherChatbot() {
   const recognitionRef = useRef(null);
 
   const initialGreeting = language === 'hi'
-    ? `नमस्ते ${user.name || ''}! मैं आपका मौसम एआई मित्र (Mausam Assistant) हूँ। मैं आईएमडी और रियल-टाइम एनडब्ल्यूपी (NWP) डेटा से संचालित हूँ। आप मुझसे मौसम, वर्षा, वायु गुणवत्ता (AQI), या 7-दिवसीय पूर्वानुमान के बारे में कुछ भी पूछ सकते हैं।`
-    : `Namaste ${user.name || ''}! I'm Mausam Assistant, powered by real-time meteorological observations and NWP multi-model data. Ask me anything about current weather, rain probability, hourly/7-day forecasts, air quality, or alerts!`;
+    ? `नमस्ते ${user.name || ''}! मैं आपका मौसम एआई मित्र (Mausam Assistant) हूँ। मैं रियल-टाइम मौसम एवं एनडब्ल्यूपी (NWP) डेटा से संचालित हूँ। आप मुझसे मौसम, वर्षा, या वायु गुणवत्ता के बारे में कुछ भी पूछ सकते हैं।`
+    : `Namaste ${user.name || ''}! I'm Mausam Assistant, powered by real-time meteorological observations. Ask me anything about current weather, rain probability, hourly/7-day forecasts, air quality, or alerts!`;
 
   const [messages, setMessages] = useState([
     {
@@ -103,13 +103,13 @@ export default function WeatherChatbot() {
     if (isOpen) scrollToBottom();
   }, [messages, isTyping, isOpen]);
 
-  // Audio Playback with ElevenLabs TTS + Browser Fallback
+  // Audio Playback with ElevenLabs TTS + Instant Browser Speech Fallback
   const stopAudio = () => {
     if (activeAudioRef.current) {
       activeAudioRef.current.pause();
       activeAudioRef.current = null;
     }
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
     setPlayingMessageId(null);
@@ -124,6 +124,9 @@ export default function WeatherChatbot() {
     stopAudio();
     setPlayingMessageId(msgId);
 
+    let playedServerAudio = false;
+
+    // 1. Try ElevenLabs backend streaming first
     try {
       const res = await fetch('/api/tts', {
         method: 'POST',
@@ -132,7 +135,7 @@ export default function WeatherChatbot() {
       });
 
       const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('audio/mpeg')) {
+      if (res.ok && contentType.includes('audio/mpeg')) {
         const blob = await res.blob();
         const audioUrl = URL.createObjectURL(blob);
         const audio = new Audio(audioUrl);
@@ -147,33 +150,41 @@ export default function WeatherChatbot() {
           activeAudioRef.current = null;
         };
         await audio.play();
+        playedServerAudio = true;
         return;
       }
-
-      // JSON response: client fallback needed
-      const json = await res.json().catch(() => ({}));
-      if (json.useClientFallback && typeof window !== 'undefined' && window.speechSynthesis) {
-        const clean = text.replace(/[*#_`]/g, '');
-        const utter = new SpeechSynthesisUtterance(clean);
-        utter.lang = /[\u0900-\u097F]/.test(text) ? 'hi-IN' : 'en-US';
-        utter.onend = () => setPlayingMessageId(null);
-        utter.onerror = () => setPlayingMessageId(null);
-        window.speechSynthesis.speak(utter);
-      } else {
-        setPlayingMessageId(null);
-      }
     } catch (err) {
-      console.warn('TTS streaming failed, falling back to local speech synthesis:', err);
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        const clean = text.replace(/[*#_`]/g, '');
+      // Backend /api/tts not available (e.g. static Firebase Hosting), will use browser speech synthesis
+    }
+
+    // 2. Direct Web Speech API synthesis (Instant, reliable, works everywhere on Firebase, desktop, & mobile)
+    if (!playedServerAudio && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const clean = text.replace(/[*#_`]/g, '').replace(/https?:\/\/\S+/g, '');
         const utter = new SpeechSynthesisUtterance(clean);
-        utter.lang = /[\u0900-\u097F]/.test(text) ? 'hi-IN' : 'en-US';
+        const isHi = /[\u0900-\u097F]/.test(text);
+        utter.lang = isHi ? 'hi-IN' : 'en-US';
+        utter.rate = 1.0;
+        utter.pitch = 1.0;
+
+        const voices = window.speechSynthesis.getVoices() || [];
+        const matchedVoice = voices.find(v => 
+          isHi 
+            ? v.lang.includes('hi') 
+            : (v.lang.includes('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Zira')))
+        );
+        if (matchedVoice) utter.voice = matchedVoice;
+
         utter.onend = () => setPlayingMessageId(null);
         utter.onerror = () => setPlayingMessageId(null);
         window.speechSynthesis.speak(utter);
-      } else {
+      } catch (synthErr) {
+        console.warn('Speech synthesis failed:', synthErr);
         setPlayingMessageId(null);
       }
+    } else {
+      setPlayingMessageId(null);
     }
   };
 
@@ -255,6 +266,28 @@ export default function WeatherChatbot() {
           source: 'Mausam Guardrail'
         };
       }
+    }
+
+    // Meta Questions: Setup, AI API key, Voice
+    if (q.includes('api') || q.includes('how to add') || q.includes('llm') || q.includes('gemini') || q.includes('openai') || q.includes('speak') || q.includes('voice') || q.includes('sound')) {
+      if (q.includes('speak') || q.includes('voice') || q.includes('audio') || q.includes('बोल') || q.includes('आवाज़') || q.includes('sound')) {
+        return {
+          text: isHi
+            ? "🔊 आवाज़ सक्रिय कर दी गई है! अब हर उत्तर स्वतः बोलकर सुनाया जाएगा। आप किसी भी उत्तर के पास 'Speak' पर क्लिक करके उसे दोबारा सुन सकते हैं।"
+            : "🔊 Voice speech is active! Every answer will now speak out loud automatically. You can also click 'Speak' beside any message to replay it, or toggle the Voice button in the top bar.",
+          toolCalls: [],
+          followUps: ['🌧️ Will it rain today?', '🌡️ Today\'s temperature'],
+          source: 'Mausam Voice Assistant'
+        };
+      }
+      return {
+        text: isHi
+          ? "🤖 AI API (Google Gemini / OpenAI) जोड़ने के सरल चरण:\n1. aistudio.google.com पर जाएं और अपना निःशुल्क Google Gemini API Key प्राप्त करें (क्रेडिट कार्ड की आवश्यकता नहीं)।\n2. अपनी .env फ़ाइल में `LLM_API_KEY=your_key_here` लिखें।\n3. इसके बाद AI किसी भी भाषा में मौसम, यात्रा, स्वास्थ्य और कृषि से जुड़े जटिल प्रश्नों का बुद्धिमानी से उत्तर देगा।"
+          : "🤖 How to add an AI API (Google Gemini / OpenAI):\n1. Visit Google AI Studio (aistudio.google.com) and get a free Google Gemini API Key (takes 30 seconds, no credit card required).\n2. Open your project's `.env` file and set `LLM_API_KEY=your_gemini_api_key`.\n3. The chatbot will immediately use real generative AI to reason and answer all questions in natural conversational language!",
+        toolCalls: [],
+        followUps: ['🌧️ Will it rain today?', '🌡️ Today\'s temperature', '☀️ UV index'],
+        source: 'Mausam Setup Guide'
+      };
     }
 
     const targetCity = selectedCity || { name: 'New Delhi', lat: 28.6139, lon: 77.2090 };
@@ -533,22 +566,6 @@ export default function WeatherChatbot() {
                         : 'bg-slate-950 border border-slate-800 text-slate-200 rounded-tl-sm'
                     }`}>
                       <p className="whitespace-pre-line text-xs">{m.text}</p>
-
-                      {/* Tool Calls Execution Badges */}
-                      {m.toolCalls && m.toolCalls.length > 0 && (
-                        <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex flex-wrap gap-1.5">
-                          {m.toolCalls.map((tc, tcIdx) => (
-                            <span 
-                              key={tcIdx}
-                              className="text-[9px] font-mono px-2 py-0.5 rounded bg-sky-950/70 text-sky-300 border border-sky-800/60 flex items-center gap-1"
-                            >
-                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
-                              <span>{tc.tool}</span>
-                              <span className="text-slate-400">({tc.location})</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
 
                     {/* Meta Bar: Timestamp, Source & Audio Readout Button */}
@@ -561,15 +578,17 @@ export default function WeatherChatbot() {
                           <span>•</span>
                           <button
                             onClick={() => playMessageAudio(m.text, m.id)}
-                            className={`flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-slate-800 transition ${
-                              isSpeaking ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-200'
+                            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border transition ${
+                              isSpeaking 
+                                ? 'bg-emerald-950 border-emerald-600 text-emerald-300 font-bold animate-pulse' 
+                                : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
                             }`}
-                            title={isSpeaking ? 'Stop Audio' : 'Listen with ElevenLabs / Voice'}
+                            title={isSpeaking ? 'Stop Voice Audio' : 'Play Voice Speech'}
                           >
                             {isSpeaking ? (
-                              <span className="flex items-center gap-1 text-emerald-400 font-bold">Playing</span>
+                              <span className="flex items-center gap-1">⏹️ Stop</span>
                             ) : (
-                              <span className="flex items-center gap-1"><Volume2 className="w-2.5 h-2.5" /> Listen</span>
+                              <span className="flex items-center gap-1"><Volume2 className="w-3 h-3 text-sky-400" /> Speak</span>
                             )}
                           </button>
                         </>

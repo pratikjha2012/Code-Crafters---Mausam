@@ -1,4 +1,4 @@
-﻿import { 
+import { 
   getCurrentWeather, 
   getHourlyForecast, 
   getDailyForecast, 
@@ -188,9 +188,90 @@ export function generateFollowUps(topic, location, lang) {
   }
 }
 
+// Helper: Call Google Gemini or OpenAI LLM API if LLM_API_KEY is configured
+async function synthesizeWithLLM(prompt, language) {
+  const apiKey = process.env.LLM_API_KEY;
+  if (!apiKey || apiKey.trim() === '') return null;
+
+  try {
+    // Check if OpenAI key (starts with sk-)
+    if (apiKey.startsWith('sk-') && !apiKey.startsWith('sk_')) {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You are Mausam Assistant, an official AI meteorologist for the Ministry of Earth Sciences (IMD). Provide warm, concise, professional weather responses grounded strictly in the provided observations.' },
+            { role: 'user', content: prompt }
+          ],
+          max_tokens: 350
+        })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        return json.choices?.[0]?.message?.content?.trim();
+      }
+    } else {
+      // Default: Google Gemini 1.5 Flash (free tier available on aistudio.google.com)
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const res = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `You are Mausam Assistant, an official AI meteorologist for the Ministry of Earth Sciences (IMD). Answer the following query concisely and naturally in ${language === 'hi' ? 'Hindi' : 'the language requested'}:\n\n${prompt}`
+            }]
+          }],
+          generationConfig: { maxOutputTokens: 350, temperature: 0.7 }
+        })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        return json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      }
+    }
+  } catch (err) {
+    console.warn('LLM synthesis failed, falling back to deterministic template:', err.message);
+  }
+  return null;
+}
+
 // Main AI Agent Execution Function
 export async function executeWeatherAgent({ message, sessionId, userLocation, preferredLanguage }) {
-  // 1. Weather Intent Classification Guardrail
+  const q = message.toLowerCase().trim();
+  const detectedLang = preferredLanguage || detectLanguage(message);
+  const isHi = detectedLang === 'hi';
+
+  // 1. Meta / Setup / Voice Questions
+  if (q.includes('api') || q.includes('how to add') || q.includes('llm') || q.includes('gemini') || q.includes('openai') || q.includes('speak') || q.includes('voice') || q.includes('sound')) {
+    if (q.includes('speak') || q.includes('voice') || q.includes('audio') || q.includes('बोल') || q.includes('आवाज़') || q.includes('sound')) {
+      return {
+        text: isHi
+          ? "🔊 आवाज़ सक्रिय है! आप किसी भी उत्तर के नीचे 'Speak' पर क्लिक करके उसे सुन सकते हैं, या ऊपर 'Voice: ON' टॉगल का उपयोग कर सकते हैं।"
+          : "🔊 Voice speech is active! Click the 'Speak' button beside any message to hear it out loud, or keep the Voice toggle ON in the header.",
+        toolCalls: [],
+        followUps: ['🌧️ Will it rain today?', '🌡️ Today\'s temperature'],
+        language: detectedLang,
+        source: 'Mausam Voice Assistant'
+      };
+    }
+    return {
+      text: isHi
+        ? "🤖 AI API (Google Gemini / OpenAI) जोड़ने के चरण:\n1. Google AI Studio (aistudio.google.com) से निःशुल्क Gemini API Key प्राप्त करें।\n2. अपनी .env फ़ाइल में `LLM_API_KEY=your_key` लिखें।\n3. इसके बाद AI किसी भी भाषा में जटिल और प्राकृतिक मौसम उत्तर देगा।"
+        : "🤖 How to add an AI API (Google Gemini / OpenAI):\n1. Visit Google AI Studio (aistudio.google.com) and get a free Google Gemini API Key (no credit card required).\n2. In your project's `.env` file, set `LLM_API_KEY=your_gemini_key`.\n3. The chatbot will immediately use real generative AI reasoning to answer any complex questions in natural language!",
+      toolCalls: [],
+      followUps: ['🌧️ Will it rain today?', '🌡️ Today\'s temperature', '⚠️ Weather alerts'],
+      language: detectedLang,
+      source: 'Mausam Setup Guide'
+    };
+  }
+
+  // 2. Weather Intent Classification Guardrail
   if (!isWeatherQuery(message)) {
     return {
       text: UNRELATED_REJECTION_MESSAGE,
@@ -205,10 +286,6 @@ export async function executeWeatherAgent({ message, sessionId, userLocation, pr
       source: 'Mausam Guardrail'
     };
   }
-
-  // 2. Language & Context Setup
-  const detectedLang = preferredLanguage || detectLanguage(message);
-  const isHi = detectedLang === 'hi';
   const session = getSessionContext(sessionId);
 
   // If client provided a real GPS userLocation, seed it as default
@@ -296,6 +373,19 @@ export async function executeWeatherAgent({ message, sessionId, userLocation, pr
     resultText = isHi
       ? "मैं इस समय नवीनतम मौसम डेटा प्राप्त करने में असमर्थ हूँ। कृपया कुछ क्षण बाद पुनः प्रयास करें।"
       : "I'm unable to retrieve the latest weather data right now. Please try again in a moment.";
+  }
+
+  // If LLM API Key is configured, use Gemini / OpenAI for rich conversational phrasing
+  if (process.env.LLM_API_KEY && process.env.LLM_API_KEY.trim() !== '') {
+    try {
+      const llmPrompt = `User query: "${message}". Live verified telemetry data: "${resultText}". Respond naturally and warmly to the user while keeping all live weather statistics accurate.`;
+      const aiResponse = await synthesizeWithLLM(llmPrompt, detectedLang);
+      if (aiResponse) {
+        resultText = aiResponse;
+      }
+    } catch (e) {
+      console.warn('LLM enrichment skipped:', e.message);
+    }
   }
 
   // 5. Follow-up Suggestions
