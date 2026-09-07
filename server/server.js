@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
@@ -36,7 +36,7 @@ app.get('/api/health', (req, res) => {
       hasWeatherKey: Boolean(process.env.WEATHER_API_KEY),
       hasLlmKey: Boolean(process.env.LLM_API_KEY),
       hasElevenLabsKey: Boolean(process.env.ELEVENLABS_API_KEY),
-      elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'
+      elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'
     }
   });
 });
@@ -129,7 +129,7 @@ app.post('/api/tts', async (req, res) => {
   }
 
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  const targetVoice = voiceId || process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // Rachel default
+  const targetVoice = voiceId || process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL'; // Sarah premade default
 
   // If no ElevenLabs API key is configured yet, inform the client to use browser speech synthesis
   if (!apiKey || apiKey.trim() === '') {
