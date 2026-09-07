@@ -1,207 +1,540 @@
-import React from 'react';
-import { useWeather, PERSONAS } from '../context/WeatherContext';
-import { useUser } from '../context/UserContext';
+import React, { useMemo } from 'react';
+import { useWeather } from '../context/WeatherContext';
+import { useUser, INFORMATION_PRIORITIES } from '../context/UserContext';
 import OverviewHero from '../components/OverviewHero';
-import WeatherMap from '../components/WeatherMap';
+import { getWeatherDescription } from '../services/weatherApi';
 import { 
-  Sparkles, 
-  ArrowRight, 
-  Heart, 
-  Clock, 
-  ShieldAlert, 
+  Droplets, 
+  Sun, 
+  Wind, 
+  Eye, 
   Activity, 
-  Flame, 
-  Waves, 
-  Sprout, 
-  Car, 
-  Plane, 
+  Sunrise, 
+  Sunset, 
+  Clock, 
+  AlertTriangle, 
   ShieldCheck, 
+  Compass, 
+  ChevronRight, 
+  Sparkles,
+  ArrowUp,
+  ArrowDown,
   CalendarDays,
-  CheckCircle2,
-  AlertTriangle
+  Sprout,
+  Car,
+  Plane,
+  Flame,
+  Waves
 } from 'lucide-react';
 
 export default function HomePage({ onNavigate }) {
   const { weather, language } = useWeather();
-  const { user, setIsProfileModalOpen } = useUser();
+  const { user } = useUser();
 
   if (!weather || !weather.current || !weather.aqi) return null;
-  const { current, aqi } = weather;
+  const { current, aqi, marine, alerts, rawHourly, rawDaily, cityName } = weather;
 
-  // Personalized Advisory computation based on user allergies and current weather
-  const getPersonalizedInsights = () => {
-    const alerts = [];
-    if (user.allergies.includes('asthma') && aqi.usAqi > 150) {
-      alerts.push({
-        type: 'critical',
-        icon: '🫁',
-        title: 'Asthma Trigger Alert',
-        text: `AQI is currently ${aqi.usAqi} (${aqi.category}). Avoid outdoor physical strain; carry prescribed bronchodilator/inhaler.`
+  // 1. Time-of-Day Context Detection
+  const timeContext = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return 'morning';
+    if (hour >= 12 && hour < 17) return 'afternoon';
+    if (hour >= 17 && hour < 21) return 'evening';
+    return 'night';
+  }, []);
+
+  // 2. Real Live Weather Insights Generator (Zero Mock Data)
+  const weatherInsights = useMemo(() => {
+    const list = [];
+    
+    // Rain insight
+    if (current.rainProb > 60) {
+      list.push({
+        id: 'rain-high',
+        text: language === 'hi' ? 'आज वर्षा की प्रबल संभावना है, छाता साथ रखें।' : 'Rain is highly likely today; carry an umbrella or rain gear.',
+        icon: '🌧️',
+        highlight: true
+      });
+    } else if (current.rainProb > 25) {
+      list.push({
+        id: 'rain-mod',
+        text: language === 'hi' ? 'कुछ क्षेत्रों में हल्की बौछारें पड़ सकती हैं।' : 'Scattered light showers possible in some sectors.',
+        icon: '🌦️'
       });
     }
-    if (user.allergies.includes('pollen') && aqi.pollenGrass > 30) {
-      alerts.push({
-        type: 'warning',
-        icon: '🌸',
-        title: 'Elevated Pollen Concentration',
-        text: `Grass pollen is high (${aqi.pollenGrass} grains/m³). Wear wraparound sunglasses and rinse face upon returning indoors.`
-      });
-    }
-    if (user.allergies.includes('dust') && aqi.pm25 > 60) {
-      alerts.push({
-        type: 'warning',
+
+    // AQI insight
+    if (aqi.usAqi > 200) {
+      list.push({
+        id: 'aqi-bad',
+        text: language === 'hi' ? 'वायु गुणवत्ता गंभीर है। बाहर निकलते समय N95 मास्क अवश्य पहनें।' : 'Air quality is very unhealthy. N95 respirator advised outdoors.',
         icon: '😷',
-        title: 'High PM2.5 Fine Particulate Count',
-        text: `PM2.5 is ${aqi.pm25} µg/m³. N95 respirators are strongly recommended on outdoor roads.`
+        highlight: true
+      });
+    } else if (aqi.usAqi <= 50) {
+      list.push({
+        id: 'aqi-good',
+        text: language === 'hi' ? 'हवा स्वच्छ एवं ताज़ा है। खुली हवा में व्यायाम के लिए अनुकूल।' : 'Air quality is clean and fresh. Ideal for outdoor activities.',
+        icon: '🍃'
       });
     }
-    if (user.allergies.includes('uv_sensitive') && current.uvIndex >= 6) {
-      alerts.push({
-        type: 'info',
-        icon: '☀️',
-        title: 'UV Radiation Protection Advisory',
-        text: `Solar UV Index is ${current.uvIndex}. Reapply SPF 50+ sunscreen and wear a wide-brim hat.`
+
+    // UV insight
+    if (current.uvIndex >= 7 && (timeContext === 'morning' || timeContext === 'afternoon')) {
+      list.push({
+        id: 'uv-high',
+        text: language === 'hi' ? 'दोपहर में यूवी इंडेक्स उच्च रहेगा। धूप का चश्मा व सनस्क्रीन लगाएं।' : 'Peak solar UV index reaches high levels this afternoon.',
+        icon: '☀️'
       });
     }
-    if (alerts.length === 0) {
-      alerts.push({
-        type: 'success',
-        icon: '✅',
-        title: 'All Conditions Clear for Your Profile',
-        text: `Atmospheric metrics are currently favorable for your registered health criteria.`
+
+    // Visibility / Fog insight
+    if (current.visibility < 1500) {
+      list.push({
+        id: 'fog-dense',
+        text: language === 'hi' ? 'कम दृश्यता के कारण सड़कों पर फॉग लाइट जलाकर चलें।' : 'Reduced road visibility; drive with low-beam fog headlights.',
+        icon: '🌫️'
       });
     }
-    return alerts;
-  };
 
-  const personalAlerts = getPersonalizedInsights();
+    // Wind insight
+    if (current.windSpeed > 25) {
+      list.push({
+        id: 'wind-breezy',
+        text: language === 'hi' ? `तेज़ हवाएं (${current.windSpeed} km/h) चलने की संभावना है।` : `Gusty winds up to ${current.windSpeed} km/h recorded.`,
+        icon: '💨'
+      });
+    }
 
-  // Gateway cards mapping
-  const gateways = [
-    { id: 'health', title: 'Health & Allergies', hindi: 'स्वास्थ्य एवं एलर्जी', icon: Activity, color: 'from-emerald-600 to-teal-700', desc: 'AQI gauge, pollen radar & asthma safety' },
-    { id: 'fitness', title: 'Fitness & Running', hindi: 'फिटनेस एवं दौड़', icon: Flame, color: 'from-amber-500 to-orange-600', desc: 'Best running hours, hydration & heat stress' },
-    { id: 'beach', title: 'Beach & Marine', hindi: 'तटीय व समुद्र', icon: Waves, color: 'from-cyan-500 to-blue-600', desc: 'Tide schedule, wave height & INCOIS flags' },
-    { id: 'agri', title: 'Kisan Agromet', hindi: 'कृषि एवं किसान', icon: Sprout, color: 'from-lime-600 to-green-700', desc: 'Soil moisture, spray window & frost alerts' },
-    { id: 'commute', title: 'Highway Commuter', hindi: 'ट्रैफिक व कोहरा', icon: Car, color: 'from-sky-600 to-slate-700', desc: 'Road visibility, fog lights & transit delays' },
-    { id: 'travel', title: 'Travel & Aviation', hindi: 'यात्री व विमानन', icon: Plane, color: 'from-purple-500 to-indigo-700', desc: 'Multi-city weather & dynamic packing lists' },
-    { id: 'family', title: 'Family & Schools', hindi: 'परिवार व बच्चे', icon: ShieldCheck, color: 'from-pink-500 to-rose-600', desc: 'School commute, sudden rain & play safety' },
-    { id: 'events', title: 'Events & Weddings', hindi: 'आयोजन व विवाह', icon: CalendarDays, color: 'from-violet-600 to-purple-800', desc: 'Guest comfort index, canopy wind limits' },
-  ];
+    if (list.length === 0) {
+      list.push({
+        id: 'clear',
+        text: language === 'hi' ? 'मौसम शांत एवं सामान्य है। किसी विशेष सावधानी की आवश्यकता नहीं।' : 'Atmospheric metrics are calm and stable. Favorable day ahead.',
+        icon: '🌤️'
+      });
+    }
 
-  return (
-    <div className="space-y-6">
-      
-      {/* Personalized Citizen Briefing Card */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-sky-950/40 border border-slate-800 shadow-xl space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-700 flex items-center justify-center text-white font-extrabold text-lg shadow-lg shadow-sky-500/20">
-              {user.name.charAt(0).toUpperCase() || 'P'}
+    return list;
+  }, [current, aqi, timeContext, language]);
+
+  // 3. Hourly Forecast (next 12 hours for Home horizontal strip)
+  const hourlyStrip = useMemo(() => {
+    if (!rawHourly?.time) return [];
+    const items = [];
+    const count = Math.min(rawHourly.time.length, 12);
+    for (let i = 0; i < count; i++) {
+      const d = new Date(rawHourly.time[i]);
+      const h = d.getHours();
+      const code = rawHourly.weather_code ? rawHourly.weather_code[i] : 0;
+      const desc = getWeatherDescription(code);
+      items.push({
+        time: i === 0 ? (language === 'hi' ? 'अभी' : 'Now') : `${h % 12 || 12} ${h >= 12 ? 'PM' : 'AM'}`,
+        temp: Math.round(rawHourly.temperature_2m[i]),
+        rainProb: rawHourly.precipitation_probability ? rawHourly.precipitation_probability[i] : (rawHourly.precipitation?.[i] > 0 ? 80 : 0),
+        icon: desc.icon,
+      });
+    }
+    return items;
+  }, [rawHourly, language]);
+
+  // 4. Dynamic Modular Reordering Engine
+  // Determines which modules render and their order based on:
+  // - Top Priority first
+  // - User's selected information priorities
+  // - Time-of-day contextual elevation
+  const orderedModuleIds = useMemo(() => {
+    const priorities = user.priorities || ['rain', 'temp', 'aqi', 'alerts', 'outdoor'];
+    const top = user.topPriority || priorities[0];
+
+    // Priority score calculation
+    const scores = {};
+    priorities.forEach((p, idx) => {
+      scores[p] = 50 - idx * 2;
+    });
+
+    // Boost top priority
+    if (top && scores[top] !== undefined) {
+      scores[top] += 100;
+    }
+
+    // Contextual boost based on time of day
+    if (timeContext === 'morning') {
+      if (scores['visibility']) scores['visibility'] += 15;
+      if (scores['travel']) scores['travel'] += 15;
+      if (scores['outdoor']) scores['outdoor'] += 10;
+    } else if (timeContext === 'afternoon') {
+      if (scores['uv']) scores['uv'] += 20;
+      if (scores['temp']) scores['temp'] += 15;
+    } else if (timeContext === 'evening') {
+      if (scores['outdoor']) scores['outdoor'] += 20;
+      if (scores['sun']) scores['sun'] += 15;
+      if (scores['rain']) scores['rain'] += 10;
+    } else { // night
+      if (scores['temp']) scores['temp'] += 15;
+      if (scores['aqi']) scores['aqi'] += 10;
+    }
+
+    // Sort by score descending
+    const sorted = Object.keys(scores).sort((a, b) => scores[b] - scores[a]);
+    return sorted;
+  }, [user.priorities, user.topPriority, timeContext]);
+
+  // Render individual modular cards
+  const renderModule = (id) => {
+    switch (id) {
+      case 'rain':
+        return (
+          <div key="rain" className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Droplets className="w-4 h-4 text-sky-500" />
+                {language === 'hi' ? 'वर्षा की संभावना' : 'Precipitation Probability'}
+              </span>
+              <span className="font-extrabold text-sky-600 dark:text-sky-400 text-sm">
+                {current.rainProb}%
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-black text-white">
-                  {language === 'hi' ? `नमस्ते, ${user.name}` : `Welcome back, ${user.name}`}
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-950 text-sky-400 border border-sky-800 uppercase tracking-wider">
-                  Personalized
-                </span>
+            <div className="w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-sky-400 to-blue-600 rounded-full transition-all duration-500" 
+                style={{ width: `${current.rainProb}%` }} 
+              />
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {current.rainProb > 50 ? 'High probability of rain in your sector.' : 'Minimal chance of precipitation next 6 hours.'}
+            </p>
+          </div>
+        );
+
+      case 'temp':
+        return (
+          <div key="temp" className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Sun className="w-4 h-4 text-amber-500" />
+                {language === 'hi' ? 'तापमान विस्तार' : 'Temperature Range'}
+              </span>
+              <span className="font-extrabold text-slate-900 dark:text-white text-sm">
+                {current.temp}°C
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs pt-1">
+              <span className="text-slate-600 dark:text-slate-400">
+                Feels like: <strong className="text-slate-900 dark:text-white">{current.feelsLike}°C</strong>
+              </span>
+              <div className="flex items-center gap-2 font-semibold">
+                <span className="text-rose-500 flex items-center"><ArrowUp className="w-3 h-3" /> {current.tempMax}°</span>
+                <span className="text-blue-500 flex items-center"><ArrowDown className="w-3 h-3" /> {current.tempMin}°</span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Targeting your primary interest: <strong className="text-sky-300 capitalize">{user.primaryInterest}</strong> • Commute: <strong className="text-slate-300">{user.commuteTime}</strong> • Workout: <strong className="text-slate-300">{user.workoutTime}</strong>
-              </p>
             </div>
           </div>
+        );
 
+      case 'aqi':
+        return (
+          <div key="aqi" className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Activity className="w-4 h-4 text-emerald-500" />
+                {language === 'hi' ? 'वायु गुणवत्ता (AQI)' : 'Air Quality Index'}
+              </span>
+              <span className={`font-black text-xs px-2 py-0.5 rounded-full ${
+                aqi.usAqi > 150 ? 'bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400'
+              }`}>
+                {aqi.usAqi} • {aqi.category}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] text-slate-600 dark:text-slate-400">
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl text-center">
+                <span className="block text-[10px]">PM2.5</span>
+                <strong className="text-slate-900 dark:text-white">{aqi.pm25} µg/m³</strong>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl text-center">
+                <span className="block text-[10px]">PM10</span>
+                <strong className="text-slate-900 dark:text-white">{aqi.pm10} µg/m³</strong>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl text-center">
+                <span className="block text-[10px]">Ozone</span>
+                <strong className="text-slate-900 dark:text-white">{aqi.ozone} µg/m³</strong>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'uv':
+        return (
+          <div key="uv" className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Sun className="w-4 h-4 text-amber-500" />
+                {language === 'hi' ? 'यूवी इंडेक्स' : 'UV Index'}
+              </span>
+              <span className="font-extrabold text-amber-600 dark:text-amber-400 text-sm">
+                {current.uvIndex} ({current.uvIndex >= 6 ? 'High' : 'Moderate'})
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              {current.uvIndex >= 6 
+                ? 'High ultraviolet exposure. Sun protection (SPF 50+, hat) recommended between 11 AM – 3 PM.' 
+                : 'Moderate solar index. Safe for normal outdoor exposure.'}
+            </p>
+          </div>
+        );
+
+      case 'wind':
+        return (
+          <div key="wind" className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Wind className="w-4 h-4 text-teal-500" />
+                {language === 'hi' ? 'हवा की गति' : 'Wind & Gusts'}
+              </span>
+              <span className="font-extrabold text-slate-900 dark:text-white text-sm">
+                {current.windSpeed} km/h
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 pt-1">
+              <span>Peak Gusts: <strong className="text-slate-900 dark:text-white">{current.windGusts || current.windSpeed} km/h</strong></span>
+              <span>Direction: <strong className="text-slate-900 dark:text-white">{current.windDirection}°</strong></span>
+            </div>
+          </div>
+        );
+
+      case 'visibility':
+        return (
+          <div key="visibility" className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Eye className="w-4 h-4 text-indigo-500" />
+                {language === 'hi' ? 'सड़क दृश्यता' : 'Road Visibility'}
+              </span>
+              <span className="font-extrabold text-slate-900 dark:text-white text-sm">
+                {current.visibility >= 1000 ? `${(current.visibility / 1000).toFixed(1)} km` : `${current.visibility} m`}
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              {current.visibility < 1000 ? 'Dense fog alert. Reduce driving speed.' : 'Clear visual range across highway sectors.'}
+            </p>
+          </div>
+        );
+
+      case 'sun':
+        return (
+          <div key="sun" className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Sunrise className="w-4 h-4 text-amber-500" />
+                {language === 'hi' ? 'सूर्य चक्र' : 'Astronomical Cycle'}
+              </span>
+            </div>
+            <div className="flex items-center justify-around pt-1 text-xs">
+              <div className="flex items-center gap-2">
+                <Sunrise className="w-4 h-4 text-amber-500" />
+                <div>
+                  <span className="text-[10px] text-slate-500 block">Sunrise</span>
+                  <strong className="text-slate-900 dark:text-white">{current.sunrise}</strong>
+                </div>
+              </div>
+              <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-800" />
+              <div className="flex items-center gap-2">
+                <Sunset className="w-4 h-4 text-indigo-500" />
+                <div>
+                  <span className="text-[10px] text-slate-500 block">Sunset</span>
+                  <strong className="text-slate-900 dark:text-white">{current.sunset}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'outdoor':
+        return (
+          <div key="outdoor" className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Flame className="w-4 h-4 text-orange-500" />
+                {language === 'hi' ? 'बाहरी गतिविधियां' : 'Outdoor Exercise Window'}
+              </span>
+              <span className="font-bold text-xs text-emerald-600 dark:text-emerald-400">
+                {aqi.usAqi < 100 ? 'Favorable' : 'Moderate Caution'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              {timeContext === 'morning' ? 'Best workout hours: 06:00 – 08:30 AM before peak solar heating.' : 'Late afternoon brings cooling thermal relief for running.'}
+            </p>
+          </div>
+        );
+
+      case 'travel':
+        return (
+          <div key="travel" className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Plane className="w-4 h-4 text-purple-500" />
+                {language === 'hi' ? 'यात्रा व आवागमन' : 'Transit & Highways'}
+              </span>
+              <span className="font-bold text-xs text-sky-600 dark:text-sky-400">Normal</span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              Corridor visibility is normal ({current.visibility >= 1000 ? `${(current.visibility / 1000).toFixed(1)} km` : `${current.visibility} m`}); zero severe thunderstorm delay alerts.
+            </p>
+          </div>
+        );
+
+      case 'agri':
+        return (
+          <div key="agri" className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Sprout className="w-4 h-4 text-lime-600" />
+                {language === 'hi' ? 'कृषि व मृदा' : 'Soil & Spray Conditions'}
+              </span>
+              <span className="font-bold text-xs text-lime-600 dark:text-lime-400">
+                Moisture: {(current.soilMoisture * 100).toFixed(0)}%
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              {current.windSpeed < 15 && current.rainProb < 40 
+                ? 'Optimal agrochemical spraying window active (calm winds, low rain chance).' 
+                : 'Postpone chemical spray due to elevated winds / precipitation probability.'}
+            </p>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="space-y-5 pb-20">
+      
+      {/* 1. SEVERE WEATHER ALERT OVERRIDE (Jumps to top if alert exists) */}
+      {alerts && alerts.length > 0 && (
+        <div className="space-y-2">
+          {alerts.map((al) => (
+            <div
+              key={al.id}
+              onClick={() => onNavigate && onNavigate('alerts')}
+              className={`p-4 rounded-3xl border shadow-md cursor-pointer transition flex items-start gap-3.5 ${
+                al.type === 'critical'
+                  ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800 text-rose-950 dark:text-rose-100'
+                  : 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-800 text-amber-950 dark:text-amber-100'
+              }`}
+            >
+              <div className="p-2 rounded-2xl bg-rose-500 text-white shrink-0 mt-0.5">
+                <AlertTriangle className="w-5 h-5 animate-pulse" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-black text-xs sm:text-sm">{al.title}</h3>
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-200 dark:bg-rose-900 text-rose-800 dark:text-rose-200">
+                    IMD Alert
+                  </span>
+                </div>
+                <p className="text-xs mt-1 opacity-90 line-clamp-2 leading-relaxed">
+                  {al.desc}
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 self-center text-slate-400 shrink-0" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 2. CURRENT WEATHER HERO (with Dynamic Weather-Reactive Background) */}
+      <OverviewHero />
+
+      {/* 3. CONCISE WEATHER INSIGHTS (Generated from live telemetry) */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+            {language === 'hi' ? 'मौसम संज्ञान एवं सुझाव' : 'Live Atmospheric Insights'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {weatherInsights.map((ins) => (
+            <div
+              key={ins.id}
+              className={`p-3.5 rounded-2xl border text-xs flex items-start gap-2.5 transition ${
+                ins.highlight 
+                  ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-950 dark:text-amber-200 shadow-sm' 
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 shadow-sm'
+              }`}
+            >
+              <span className="text-base shrink-0">{ins.icon}</span>
+              <p className="font-semibold leading-relaxed pt-0.5">{ins.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 4. SWIPEABLE 24-HOUR HOURLY FORECAST SECTION */}
+      <div className="space-y-2.5 pt-1">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-sky-500" />
+            <span>{language === 'hi' ? 'घंटेवार पूर्वानुमान' : 'Hourly Forecast (24h)'}</span>
+          </h3>
           <button
-            onClick={() => setIsProfileModalOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-sky-400 border border-slate-700 transition"
+            type="button"
+            onClick={() => onNavigate && onNavigate('forecast')}
+            className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-0.5"
           >
-            Edit Health & Sensitivities
+            <span>7-Day</span>
+            <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        {/* Dynamic Proactive Allergy / Health Warnings based on user profile */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {personalAlerts.map((al, idx) => (
+        <div className="flex gap-2.5 overflow-x-auto pb-2 pt-0.5 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700">
+          {hourlyStrip.map((item, idx) => (
             <div
               key={idx}
-              className={`p-3.5 rounded-2xl border flex items-start gap-3 text-xs ${
-                al.type === 'critical' ? 'bg-rose-950/40 border-rose-700 text-rose-200' :
-                al.type === 'warning' ? 'bg-amber-950/40 border-amber-700 text-amber-200' :
-                al.type === 'info' ? 'bg-sky-950/40 border-sky-700 text-sky-200' :
-                'bg-emerald-950/40 border-emerald-700 text-emerald-200'
+              className={`shrink-0 w-20 p-3 rounded-2xl border text-center transition flex flex-col justify-between items-center ${
+                idx === 0 
+                  ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-400 dark:border-sky-600 shadow-sm' 
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm'
               }`}
             >
-              <span className="text-lg mt-0.5 shrink-0">{al.icon}</span>
-              <div>
-                <div className="font-bold text-xs">{al.title}</div>
-                <p className="text-[11px] mt-0.5 opacity-90 leading-relaxed">{al.text}</p>
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                {item.time}
+              </span>
+              <div className="my-1.5 text-xl">
+                {item.icon === 'Sun' ? '☀️' : 
+                 item.icon === 'CloudSun' ? '⛅' :
+                 item.icon === 'Cloud' ? '☁️' :
+                 item.icon === 'CloudRain' ? '🌧️' :
+                 item.icon === 'CloudLightning' ? '⛈️' :
+                 item.icon === 'CloudFog' ? '🌫️' :
+                 item.icon === 'Snowflake' ? '❄️' : '⛅'}
+              </div>
+              <span className="text-sm font-black text-slate-900 dark:text-white">
+                {item.temp}°
+              </span>
+              <div className="mt-1 flex items-center gap-0.5 text-[10px] text-sky-600 dark:text-sky-400 font-bold">
+                <Droplets className="w-2.5 h-2.5" />
+                <span>{item.rainProb}%</span>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Main Meteorological Card */}
-      <OverviewHero />
-
-      {/* Interactive Google Maps Station Radar */}
-      <WeatherMap />
-
-      {/* Dedicated Persona Portals Navigation Gateways */}
-      <div className="space-y-4 pt-2">
+      {/* 5. DYNAMIC PERSONALIZED MODULES (Invisible Personalization) */}
+      <div className="space-y-3 pt-1">
         <div className="flex items-center justify-between px-1">
-          <div>
-            <h3 className="text-lg font-black text-white">
-              {language === 'hi' ? 'समर्पित मौसम हब' : 'Specialized Meteorological Hubs'}
-            </h3>
-            <p className="text-xs text-slate-400">
-              Explore deeply tailored, interactive dedicated web pages for each activity
-            </p>
-          </div>
-          <span className="text-xs text-sky-400 font-semibold hidden sm:inline">
-            8 Dedicated Portals Available
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            {language === 'hi' ? 'आपकी प्राथमिक मौसम सूचना' : 'Information Priorities'}
+          </h3>
+          <span className="text-[10px] text-slate-500 font-medium">
+            Dynamic Ordering
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {gateways.map((g) => {
-            const Icon = g.icon;
-            const isFavorite = user.primaryInterest === g.id;
-            return (
-              <div
-                key={g.id}
-                onClick={() => onNavigate(g.id)}
-                className="group relative p-5 rounded-3xl bg-slate-900 border border-slate-800 hover:border-sky-500/60 shadow-xl transition-all duration-200 cursor-pointer flex flex-col justify-between hover:translate-y-[-2px]"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className={`p-3 rounded-2xl bg-gradient-to-br ${g.color} text-white shadow-md group-hover:scale-110 transition-transform`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    {isFavorite && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-800">
-                        Your Focus
-                      </span>
-                    )}
-                  </div>
-
-                  <h4 className="font-bold text-sm text-white group-hover:text-sky-300 transition-colors">
-                    {language === 'hi' ? g.hindi : g.title}
-                  </h4>
-                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    {g.desc}
-                  </p>
-                </div>
-
-                <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs font-semibold text-slate-400 group-hover:text-sky-400 transition-colors">
-                  <span>Open Dedicated Hub</span>
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
-            );
-          })}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {orderedModuleIds.map((id) => renderModule(id))}
         </div>
       </div>
 

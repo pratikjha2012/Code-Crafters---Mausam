@@ -463,25 +463,32 @@ export default function WeatherChatbot() {
 
   return (
     <>
-      {/* Floating Chat Trigger Button */}
+      {/* Floating Chat Trigger Button - Thumb Friendly, positioned above bottom navigation */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 p-3.5 sm:p-4 rounded-full bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 text-white shadow-[0_10px_35px_rgba(14,165,233,0.5)] border border-sky-400/40 hover:scale-110 active:scale-95 transition-all group flex items-center gap-2.5"
+          className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 px-3.5 py-2.5 sm:p-4 rounded-full bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 text-white shadow-[0_10px_35px_rgba(14,165,233,0.5)] border border-sky-400/40 hover:scale-105 active:scale-95 transition-all group flex items-center gap-2"
           title="Open Mausam Assistant"
         >
-          <Bot className="w-6 h-6 animate-bounce" />
-          <span className="text-xs font-black tracking-wide pr-1 hidden sm:inline">
+          <div className="relative">
+            <Bot className="w-5 h-5 sm:w-6 sm:h-6" />
+            <span className="w-2 h-2 rounded-full bg-emerald-400 border border-slate-900 absolute -top-0.5 -right-0.5 animate-ping" />
+          </div>
+          <span className="text-xs font-bold tracking-tight">
             Mausam Assistant
           </span>
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 border border-slate-900 absolute top-2 right-2 animate-ping" />
         </button>
       )}
 
-      {/* Expandable Chatbot Window */}
+      {/* Mobile-Friendly Bottom Sheet Drawer / Floating Window */}
       {isOpen && (
-        <div className="fixed bottom-4 right-3 sm:bottom-6 sm:right-6 z-50 w-[94vw] sm:w-[440px] h-[580px] max-h-[88vh] bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-3xl shadow-2xl flex flex-col overflow-hidden ring-1 ring-sky-500/30 text-slate-100 animate-in fade-in slide-in-from-bottom-5">
+        <div className="fixed bottom-0 sm:bottom-6 right-0 sm:right-6 z-50 w-full sm:w-[440px] h-[85vh] sm:h-[580px] bg-white dark:bg-slate-900/95 backdrop-blur-xl border-t sm:border border-slate-200 dark:border-slate-700/80 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden ring-1 ring-sky-500/30 text-slate-900 dark:text-slate-100 animate-in fade-in slide-in-from-bottom-5">
           
+          {/* Mobile Drag/Grabber Handle */}
+          <div className="sm:hidden pt-2 pb-1 flex justify-center bg-sky-700">
+            <div className="w-12 h-1.5 bg-white/40 rounded-full" />
+          </div>
+
           {/* Header */}
           <div className="p-3.5 sm:p-4 bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 flex items-center justify-between text-white shadow-md">
             <div className="flex items-center gap-2.5">
