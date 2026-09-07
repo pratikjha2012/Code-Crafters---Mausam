@@ -106,7 +106,25 @@ export function extractQueryEntities(query, sessionContext) {
   let hour = null;
   let topic = 'current';
 
-  // Extract common Indian & international cities
+  // 1. Dynamic preposition extraction (e.g. "in Jasidih", "for Deoghar", "at Mumbai")
+  const prepMatch = query.match(/\b(?:in|at|for|near|of|around)\s+([A-Za-z\u0900-\u097F\s]{2,25}?)(?:\s+today|\s+tomorrow|\s+now|\s+weather|\s+forecast|\?|\.|$)/i);
+  if (prepMatch) {
+    const candidate = prepMatch[1].trim();
+    if (!['the morning', 'the evening', 'the afternoon', 'the night', 'today', 'tomorrow', 'this week', 'next week', 'delhi'].includes(candidate.toLowerCase())) {
+      location = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+    }
+  }
+
+  // 2. Hindi preposition extraction (e.g. "जसीडीह में", "Jasidih में")
+  const hindiPrepMatch = query.match(/([A-Za-z\u0900-\u097F\s]{2,20}?)\s+(?:में|का|की|के)/i);
+  if (hindiPrepMatch && !prepMatch) {
+    const candidate = hindiPrepMatch[1].trim();
+    if (!['आज', 'कल', 'परसों', 'दिन', 'रात', 'मौसम'].includes(candidate.toLowerCase())) {
+      location = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+    }
+  }
+
+  // 3. Extract common Indian & international cities fallback
   const cityMatches = [
     'new delhi', 'delhi', 'mumbai', 'bengaluru', 'bangalore', 'chennai', 'kolkata',
     'hyderabad', 'pune', 'jaipur', 'ahmedabad', 'lucknow', 'kanpur', 'patna', 'shimla',
@@ -216,8 +234,8 @@ async function synthesizeWithLLM(prompt, language) {
         return json.choices?.[0]?.message?.content?.trim();
       }
     } else {
-      // Default: Google Gemini 1.5 Flash (free tier available on aistudio.google.com)
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      // Default: Google Gemini (gemini-flash-latest from aistudio.google.com)
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
       const res = await fetch(geminiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

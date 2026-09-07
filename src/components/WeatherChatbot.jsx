@@ -290,7 +290,12 @@ export default function WeatherChatbot() {
       };
     }
 
-    const targetCity = selectedCity || { name: 'New Delhi', lat: 28.6139, lon: 77.2090 };
+    let targetCity = selectedCity || { name: 'New Delhi', lat: 28.6139, lon: 77.2090 };
+    const prepMatch = query.match(/\b(?:in|at|for|near|of|around)\s+([A-Za-z\u0900-\u097F\s]{2,25}?)(?:\s+today|\s+tomorrow|\s+now|\s+weather|\s+forecast|\?|\.|$)/i);
+    const candidateName = prepMatch ? prepMatch[1].trim() : null;
+    if (candidateName && !['the morning', 'the evening', 'the afternoon', 'the night', 'today', 'tomorrow', 'this week', 'next week'].includes(candidateName.toLowerCase())) {
+      targetCity = { ...targetCity, name: candidateName.charAt(0).toUpperCase() + candidateName.slice(1) };
+    }
     const cur = weather?.current;
     const aqi = weather?.aqi;
     const isHi = language === 'hi' || /[\u0900-\u097F]/.test(query);
