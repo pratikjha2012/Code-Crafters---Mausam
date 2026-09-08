@@ -70,69 +70,83 @@ export async function geocodeLocation(locationStr) {
 export async function getCurrentWeather(location) {
   const geo = typeof location === 'object' && location.lat ? location : await geocodeLocation(location);
 
-  // Try WeatherAPI.com if key is set
+  // Fetch Open-Meteo for high-accuracy temperature and atmospheric physics
+  const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max&models=best_match&timezone=auto`;
+
+  let omData = null;
+  let wData = null;
+
+  const promises = [
+    fetch(omUrl, { headers: { 'User-Agent': 'MausamServer/1.0' } })
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null)
+  ];
+
   const apiKey = process.env.WEATHER_API_KEY;
   if (apiKey) {
-    try {
-      const wUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${geo.lat},${geo.lon}&days=1&aqi=yes&alerts=yes`;
-      const wRes = await fetch(wUrl);
-      if (wRes.ok) {
-        const d = await wRes.json();
-        const cur = d.current;
-        const loc = d.location;
-        const fDay = d.forecast?.forecastday?.[0]?.day;
-        const astro = d.forecast?.forecastday?.[0]?.astro;
-
-        return {
-          location: `${loc.name}, ${loc.region || loc.country}`,
-          coordinates: { lat: loc.lat, lon: loc.lon },
-          timestamp: new Date().toISOString(),
-          temperature: cur.temp_c,
-          feelsLike: cur.feelslike_c,
-          condition: cur.condition?.text || 'Clear',
-          conditionHindi: cur.condition?.text || 'साफ मौसम',
-          weatherCode: cur.condition?.code || 1000,
-          humidity: cur.humidity,
-          precipitation: cur.precip_mm,
-          rainProbabilityToday: fDay?.daily_chance_of_rain ?? 0,
-          windSpeed: cur.wind_kph,
-          windDirection: cur.wind_dir,
-          windGusts: cur.gust_kph,
-          pressure: cur.pressure_mb,
-          dewPoint: cur.dewpoint_c,
-          heatIndex: cur.heatindex_c,
-          wetBulb: cur.wetbulb_c,
-          tempMaxToday: fDay?.maxtemp_c ?? cur.temp_c,
-          tempMinToday: fDay?.mintemp_c ?? cur.temp_c,
-          uvIndexToday: cur.uv,
-          sunrise: astro?.sunrise || '06:00 AM',
-          sunset: astro?.sunset || '06:30 PM',
-          source: 'WeatherAPI.com Live Telemetry'
-        };
-      }
-    } catch (err) {
-      console.warn('WeatherAPI getCurrentWeather error, falling back to Open-Meteo:', err.message);
-    }
+    const wUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${geo.lat},${geo.lon}&days=1&aqi=yes&alerts=yes`;
+    promises.push(
+      fetch(wUrl).then(r => r.ok ? r.json() : null).catch(() => null)
+    );
   }
 
-  // Fallback to Open-Meteo
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max&models=best_match&timezone=auto`;
+  const results = await Promise.all(promises);
+  omData = results[0];
+  wData = results[1] || null;
 
-  const res = await fetch(url, { headers: { 'User-Agent': 'MausamServer/1.0' } });
-  if (!res.ok) throw new Error(`Weather API error: ${res.status}`);
-  const data = await res.json();
+  // Fallback if Open-Meteo fails
+  if (!omData && wData) {
+    const cur = wData.current;
+    const loc = wData.location;
+    const fDay = wData.forecast?.forecastday?.[0]?.day;
+    const astro = wData.forecast?.forecastday?.[0]?.astro;
+    return {
+      location: `${loc.name}, ${loc.region || loc.country}`,
+      coordinates: { lat: loc.lat, lon: loc.lon },
+      timestamp: new Date().toISOString(),
+      temperature: cur.temp_c,
+      feelsLike: cur.feelslike_c,
+      condition: cur.condition?.text || 'Clear',
+      conditionHindi: cur.condition?.text || 'साफ मौसम',
+      weatherCode: cur.condition?.code || 1000,
+      humidity: cur.humidity,
+      precipitation: cur.precip_mm,
+      rainProbabilityToday: fDay?.daily_chance_of_rain ?? 0,
+      windSpeed: cur.wind_kph,
+      windDirection: cur.wind_dir,
+      windGusts: cur.gust_kph,
+      pressure: cur.pressure_mb,
+      dewPoint: cur.dewpoint_c,
+      heatIndex: cur.heatindex_c,
+      wetBulb: cur.wetbulb_c,
+      tempMaxToday: fDay?.maxtemp_c ?? cur.temp_c,
+      tempMinToday: fDay?.mintemp_c ?? cur.temp_c,
+      uvIndexToday: cur.uv,
+      sunrise: astro?.sunrise || '06:00 AM',
+      sunset: astro?.sunset || '06:30 PM',
+      source: 'WeatherAPI.com Live Telemetry'
+    };
+  }
 
-  const cur = data.current;
-  const daily = data.daily;
+  if (!omData) {
+    throw new Error('Unable to retrieve weather data from live providers.');
+  }
+
+  const cur = omData.current;
+  const daily = omData.daily;
   const cond = getWeatherCondition(cur.weather_code);
 
+  const locName = wData ? `${wData.location.name}, ${wData.location.region || wData.location.country}` : `${geo.name}${geo.state ? ', ' + geo.state : ''}`;
+  const astro = wData?.forecast?.forecastday?.[0]?.astro;
+
   return {
-    location: `${geo.name}${geo.state ? ', ' + geo.state : ''}`,
+    location: locName,
     coordinates: { lat: geo.lat, lon: geo.lon },
     timestamp: new Date().toISOString(),
+    // RULE: Temperature strictly sourced from Open-Meteo high-resolution numerical model
     temperature: cur.temperature_2m,
     feelsLike: cur.apparent_temperature,
-    condition: cond.label,
+    condition: wData?.current?.condition?.text || cond.label,
     conditionHindi: cond.hindi,
     weatherCode: cur.weather_code,
     humidity: cur.relative_humidity_2m,
@@ -142,12 +156,19 @@ export async function getCurrentWeather(location) {
     windDirection: cur.wind_direction_10m,
     windGusts: cur.wind_gusts_10m,
     pressure: cur.surface_pressure,
-    tempMaxToday: daily?.temperature_2m_max?.[0],
-    tempMinToday: daily?.temperature_2m_min?.[0],
-    uvIndexToday: daily?.uv_index_max?.[0],
-    sunrise: daily?.sunrise?.[0],
-    sunset: daily?.sunset?.[0],
-    source: 'Open-Meteo High-Resolution Numerical Model'
+    tempMaxToday: daily?.temperature_2m_max?.[0] ?? cur.temperature_2m,
+    tempMinToday: daily?.temperature_2m_min?.[0] ?? cur.temperature_2m,
+    uvIndexToday: daily?.uv_index_max?.[0] ?? 5,
+    sunrise: astro?.sunrise || daily?.sunrise?.[0] || '06:00 AM',
+    sunset: astro?.sunset || daily?.sunset?.[0] || '06:30 PM',
+    moonPhase: astro?.moon_phase || 'Waxing Gibbous',
+    alerts: (wData?.alerts?.alert || []).map((a, i) => ({
+      id: a.identifier || `wapi-${i}`,
+      type: a.severity?.toLowerCase() === 'severe' ? 'critical' : 'warning',
+      title: a.headline || a.event,
+      desc: a.desc || a.headline
+    })),
+    source: 'Open-Meteo High-Resolution Numerical Model (Temperature Authoritative)'
   };
 }
 
@@ -155,55 +176,7 @@ export async function getCurrentWeather(location) {
 export async function getHourlyForecast(location, date, timeRange) {
   const geo = typeof location === 'object' && location.lat ? location : await geocodeLocation(location);
 
-  const apiKey = process.env.WEATHER_API_KEY;
-  if (apiKey) {
-    try {
-      const wUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${geo.lat},${geo.lon}&days=2&aqi=no&alerts=no`;
-      const wRes = await fetch(wUrl);
-      if (wRes.ok) {
-        const d = await wRes.json();
-        const forecast = [];
-        const targetDateStr = date ? (typeof date === 'string' ? date.slice(0, 10) : new Date(date).toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10);
-
-        (d.forecast?.forecastday || []).forEach(dayObj => {
-          (dayObj.hour || []).forEach(h => {
-            if (h.time.startsWith(targetDateStr)) {
-              const hourNum = parseInt(h.time.slice(11, 13), 10);
-              if (timeRange !== undefined && timeRange !== null) {
-                if (typeof timeRange === 'number' && Math.abs(hourNum - timeRange) > 1) return;
-              }
-              forecast.push({
-                time: h.time,
-                hour: hourNum,
-                temperature: h.temp_c,
-                feelsLike: h.feelslike_c,
-                rainProbability: h.chance_of_rain ?? 0,
-                precipitation: h.precip_mm,
-                condition: h.condition?.text || 'Clear',
-                humidity: h.humidity,
-                visibility: h.vis_km * 1000,
-                windSpeed: h.wind_kph,
-                uvIndex: h.uv
-              });
-            }
-          });
-        });
-
-        if (forecast.length > 0) {
-          return {
-            location: `${d.location.name}, ${d.location.region}`,
-            date: targetDateStr,
-            timestamp: new Date().toISOString(),
-            hourlyCount: forecast.length,
-            forecast: forecast.slice(0, 24),
-            source: 'WeatherAPI.com Hourly Model'
-          };
-        }
-      }
-    } catch (e) {}
-  }
-
-  // Open-Meteo fallback
+  // Use Open-Meteo as the primary model for hourly temperature precision
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m,uv_index&models=best_match&timezone=auto`;
 
   const res = await fetch(url, { headers: { 'User-Agent': 'MausamServer/1.0' } });
@@ -258,39 +231,7 @@ export async function getDailyForecast(location, date, numberOfDays = 7) {
   const geo = typeof location === 'object' && location.lat ? location : await geocodeLocation(location);
   const count = Math.min(14, Math.max(1, numberOfDays));
 
-  const apiKey = process.env.WEATHER_API_KEY;
-  if (apiKey) {
-    try {
-      const wUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${geo.lat},${geo.lon}&days=${count}&aqi=no&alerts=no`;
-      const wRes = await fetch(wUrl);
-      if (wRes.ok) {
-        const d = await wRes.json();
-        const days = (d.forecast?.forecastday || []).map(dObj => ({
-          date: dObj.date,
-          tempMax: dObj.day.maxtemp_c,
-          tempMin: dObj.day.mintemp_c,
-          condition: dObj.day.condition?.text || 'Clear',
-          conditionHindi: dObj.day.condition?.text || 'साफ',
-          rainProbability: dObj.day.daily_chance_of_rain ?? 0,
-          precipitationSum: dObj.day.totalprecip_mm,
-          uvIndexMax: dObj.day.uv,
-          windSpeedMax: dObj.day.maxwind_kph,
-          sunrise: dObj.astro?.sunrise,
-          sunset: dObj.astro?.sunset,
-          moonPhase: dObj.astro?.moon_phase
-        }));
-
-        return {
-          location: `${d.location.name}, ${d.location.region}`,
-          timestamp: new Date().toISOString(),
-          days,
-          source: 'WeatherAPI.com Daily Model'
-        };
-      }
-    } catch (e) {}
-  }
-
-  // Open-Meteo fallback
+  // Open-Meteo is authoritative for daily temperature extremes (max & min)
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max&forecast_days=${count}&models=best_match&timezone=auto`;
 
   const res = await fetch(url, { headers: { 'User-Agent': 'MausamServer/1.0' } });
@@ -320,7 +261,7 @@ export async function getDailyForecast(location, date, numberOfDays = 7) {
     location: `${geo.name}${geo.state ? ', ' + geo.state : ''}`,
     timestamp: new Date().toISOString(),
     days,
-    source: 'Open-Meteo Daily Model'
+    source: 'Open-Meteo High-Resolution Daily Model (Authoritative Temperature)'
   };
 }
 

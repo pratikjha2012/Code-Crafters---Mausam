@@ -1,4 +1,4 @@
-// High-Precision Weather API Service (Multi-Provider: WeatherAPI.com + Open-Meteo Fallback)
+// High-Precision Weather API Service (Multi-Provider: Open-Meteo Precision Temperature + WeatherAPI Alerts)
 
 const WEATHER_API_KEY = import.meta.env.VITE_WEATHER_API_KEY || '361d9ce5509d4544b88132551260809';
 
@@ -45,7 +45,6 @@ export const WMO_CODES = {
 };
 
 export function weatherApiCodeToWmo(code, text = '') {
-  const t = text.toLowerCase();
   if (code === 1000) return 0; // Sunny / Clear
   if (code === 1003) return 2; // Partly cloudy
   if (code === 1006 || code === 1009) return 3; // Cloudy / Overcast
@@ -65,148 +64,99 @@ export const getWeatherDescription = (code) => {
   return WMO_CODES[code] || { label: 'Partly Cloudy', hindi: 'आंशिक बादल', icon: 'CloudSun', severity: 'low' };
 };
 
-// Calculate US AQI from PM2.5 concentration
-function calculateAqiFromPm25(pm25) {
-  if (pm25 <= 12.0) return Math.round((50 / 12.0) * pm25);
-  if (pm25 <= 35.4) return Math.round(50 + ((100 - 50) / (35.4 - 12.0)) * (pm25 - 12.0));
-  if (pm25 <= 55.4) return Math.round(100 + ((150 - 100) / (55.4 - 35.4)) * (pm25 - 35.4));
-  if (pm25 <= 150.4) return Math.round(150 + ((200 - 150) / (150.4 - 55.4)) * (pm25 - 55.4));
-  if (pm25 <= 250.4) return Math.round(200 + ((300 - 200) / (250.4 - 150.4)) * (pm25 - 150.4));
-  return Math.round(300 + ((500 - 300) / (500.4 - 250.4)) * (pm25 - 250.4));
-}
-
-// 1. High-Precision Hyper-Local Weather (Primary: WeatherAPI.com, Fallback: Open-Meteo)
+// 1. High-Precision Hyper-Local Weather
+// RULE: Temperature data (current, feels-like, hourly, min/max) is sourced directly from Open-Meteo high-resolution ECMWF/GFS ensemble for maximum local precision.
+// WeatherAPI provides official government meteorological warnings, flood alerts, and astronomical lunar cycles.
 export async function fetchWeatherData(lat, lon) {
-  // Try WeatherAPI.com first when key is available
+  const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&minutely_15=precipitation,temperature_2m,weather_code&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m,wind_gusts_10m,uv_index,dew_point_2m,soil_temperature_0cm,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max&models=best_match&timezone=auto`;
+
+  let openMeteoData = null;
+  let weatherApiData = null;
+
+  const promises = [
+    fetch(openMeteoUrl).then(r => r.ok ? r.json() : null).catch(() => null)
+  ];
+
   if (WEATHER_API_KEY) {
-    try {
-      const url = `https://api.weatherapi.com/v1/forecast.json?key=${WEATHER_API_KEY}&q=${lat},${lon}&days=7&aqi=yes&alerts=yes`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const d = await res.json();
-        const cur = d.current;
-        const fDays = d.forecast?.forecastday || [];
-
-        // Build hourly arrays from next 24-48 hours
-        const hourlyTimes = [];
-        const hourlyTemps = [];
-        const hourlyRainProbs = [];
-        const hourlyCodes = [];
-        const hourlyWinds = [];
-        const hourlyDewPoints = [];
-
-        fDays.forEach(dayObj => {
-          (dayObj.hour || []).forEach(h => {
-            hourlyTimes.push(h.time);
-            hourlyTemps.push(h.temp_c);
-            hourlyRainProbs.push(h.chance_of_rain ?? (h.will_it_rain ? 80 : 0));
-            hourlyCodes.push(weatherApiCodeToWmo(h.condition?.code, h.condition?.text));
-            hourlyWinds.push(h.wind_kph);
-            hourlyDewPoints.push(h.dewpoint_c);
-          });
-        });
-
-        // Build daily arrays
-        const dailyTimes = [];
-        const dailyMaxTemps = [];
-        const dailyMinTemps = [];
-        const dailySunrises = [];
-        const dailySunsets = [];
-        const dailyUvs = [];
-        const dailyPrecipSums = [];
-        const dailyRainProbs = [];
-        const dailyCodes = [];
-
-        fDays.forEach(dayObj => {
-          const dData = dayObj.day;
-          const astro = dayObj.astro;
-          dailyTimes.push(dayObj.date);
-          dailyMaxTemps.push(dData.maxtemp_c);
-          dailyMinTemps.push(dData.mintemp_c);
-          dailySunrises.push(astro.sunrise);
-          dailySunsets.push(astro.sunset);
-          dailyUvs.push(dData.uv);
-          dailyPrecipSums.push(dData.totalprecip_mm);
-          dailyRainProbs.push(dData.daily_chance_of_rain ?? 0);
-          dailyCodes.push(weatherApiCodeToWmo(dData.condition?.code, dData.condition?.text));
-        });
-
-        // Map official alerts
-        const mappedAlerts = (d.alerts?.alert || []).map((a, idx) => ({
-          id: a.identifier || `wapi-${idx}`,
-          type: a.severity?.toLowerCase() === 'severe' ? 'critical' : 'warning',
-          title: a.headline || a.event,
-          desc: a.desc || a.headline,
-          instruction: a.instruction || '',
-          effective: a.effective,
-          expires: a.expires
-        }));
-
-        const wmoCurrentCode = weatherApiCodeToWmo(cur.condition?.code, cur.condition?.text);
-
-        return {
-          source: 'WeatherAPI.com Live Telemetry',
-          current: {
-            temperature_2m: cur.temp_c,
-            apparent_temperature: cur.feelslike_c,
-            relative_humidity_2m: cur.humidity,
-            weather_code: wmoCurrentCode,
-            precipitation: cur.precip_mm,
-            rain: cur.precip_mm,
-            cloud_cover: cur.cloud,
-            wind_speed_10m: cur.wind_kph,
-            wind_direction_10m: cur.wind_degree,
-            wind_gusts_10m: cur.gust_kph || cur.wind_kph,
-            surface_pressure: cur.pressure_mb,
-            visibility: cur.vis_km ? cur.vis_km * 1000 : 7000,
-            dew_point_2m: cur.dewpoint_c,
-            heat_index: cur.heatindex_c,
-            wet_bulb: cur.wetbulb_c,
-            uv: cur.uv
-          },
-          hourly: {
-            time: hourlyTimes,
-            temperature_2m: hourlyTemps,
-            precipitation_probability: hourlyRainProbs,
-            weather_code: hourlyCodes,
-            wind_speed_10m: hourlyWinds,
-            dew_point_2m: hourlyDewPoints
-          },
-          daily: {
-            time: dailyTimes,
-            temperature_2m_max: dailyMaxTemps,
-            temperature_2m_min: dailyMinTemps,
-            sunrise: dailySunrises,
-            sunset: dailySunsets,
-            uv_index_max: dailyUvs,
-            precipitation_sum: dailyPrecipSums,
-            precipitation_probability_max: dailyRainProbs,
-            weather_code: dailyCodes
-          },
-          alerts: mappedAlerts,
-          rawWeatherApi: d
-        };
-      }
-    } catch (e) {
-      console.warn('WeatherAPI request failed, falling back to Open-Meteo:', e.message);
-    }
+    const wUrl = `https://api.weatherapi.com/v1/forecast.json?key=${WEATHER_API_KEY}&q=${lat},${lon}&days=7&aqi=yes&alerts=yes`;
+    promises.push(fetch(wUrl).then(r => r.ok ? r.json() : null).catch(() => null));
   }
 
-  // Fallback to Open-Meteo
-  try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&minutely_15=precipitation,temperature_2m,weather_code&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m,wind_gusts_10m,uv_index,dew_point_2m,soil_temperature_0cm,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max&models=best_match&timezone=auto`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to fetch weather data from Open-Meteo');
-    return await res.json();
-  } catch (error) {
-    console.error('Weather API error:', error);
-    throw error;
+  const [omResult, waResult] = await Promise.all(promises);
+  openMeteoData = omResult;
+  weatherApiData = waResult;
+
+  if (!openMeteoData && !weatherApiData) {
+    throw new Error('Unable to retrieve weather data from live providers.');
   }
+
+  // If only WeatherAPI succeeded, fall back gracefully
+  if (!openMeteoData) {
+    const cur = weatherApiData.current;
+    const fDays = weatherApiData.forecast?.forecastday || [];
+    return {
+      source: 'WeatherAPI.com Fallback',
+      current: {
+        temperature_2m: cur.temp_c,
+        apparent_temperature: cur.feelslike_c,
+        relative_humidity_2m: cur.humidity,
+        weather_code: weatherApiCodeToWmo(cur.condition?.code, cur.condition?.text),
+        precipitation: cur.precip_mm,
+        rain: cur.precip_mm,
+        wind_speed_10m: cur.wind_kph,
+        wind_direction_10m: cur.wind_degree,
+        surface_pressure: cur.pressure_mb,
+        visibility: cur.vis_km * 1000
+      },
+      hourly: {
+        time: fDays[0]?.hour?.map(h => h.time) || [],
+        temperature_2m: fDays[0]?.hour?.map(h => h.temp_c) || [],
+        precipitation_probability: fDays[0]?.hour?.map(h => h.chance_of_rain || 0) || []
+      },
+      daily: {
+        time: fDays.map(d => d.date),
+        temperature_2m_max: fDays.map(d => d.day.maxtemp_c),
+        temperature_2m_min: fDays.map(d => d.day.mintemp_c),
+        sunrise: fDays.map(d => d.astro.sunrise),
+        sunset: fDays.map(d => d.astro.sunset)
+      },
+      alerts: (weatherApiData.alerts?.alert || []).map((a, i) => ({
+        id: a.identifier || `wapi-${i}`,
+        type: a.severity?.toLowerCase() === 'severe' ? 'critical' : 'warning',
+        title: a.headline || a.event,
+        desc: a.desc || a.headline
+      }))
+    };
+  }
+
+  // Combine: Open-Meteo for temperatures + WeatherAPI for alerts & moon phase
+  const merged = { ...openMeteoData };
+
+  // Overlay official weather & flood alerts from WeatherAPI if available
+  const officialAlerts = [];
+  if (weatherApiData?.alerts?.alert && weatherApiData.alerts.alert.length > 0) {
+    weatherApiData.alerts.alert.forEach((a, idx) => {
+      officialAlerts.push({
+        id: a.identifier || `wapi-${idx}`,
+        type: a.severity?.toLowerCase() === 'severe' ? 'critical' : 'warning',
+        title: a.headline || a.event,
+        desc: a.desc || a.headline,
+        instruction: a.instruction || '',
+        effective: a.effective,
+        expires: a.expires
+      });
+    });
+  }
+
+  merged.alerts = officialAlerts;
+  merged.moonPhase = weatherApiData?.forecast?.forecastday?.[0]?.astro?.moon_phase || 'Waning Crescent';
+  merged.source = 'Open-Meteo High-Resolution Multi-Model Ensemble';
+
+  return merged;
 }
 
-// 2. High-Precision Air Quality, Aerosols and Botanical Pollens
+// 2. High-Precision Air Quality & Botanical Pollens (Open-Meteo CAMS / Copernicus)
 export async function fetchAirQualityData(lat, lon) {
-  // If WeatherAPI.com was already fetched, we extract it or query Open-Meteo Air Quality
   try {
     const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi,european_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,dust,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen&hourly=us_aqi,pm2_5,pm10&timezone=auto`;
     const res = await fetch(url);
@@ -215,29 +165,6 @@ export async function fetchAirQualityData(lat, lon) {
     }
   } catch (error) {
     console.error('Air Quality API error:', error);
-  }
-
-  // Fallback to WeatherAPI air_quality if open-meteo fails
-  if (WEATHER_API_KEY) {
-    try {
-      const res = await fetch(`https://api.weatherapi.com/v1/current.json?key=${WEATHER_API_KEY}&q=${lat},${lon}&aqi=yes`);
-      if (res.ok) {
-        const d = await res.json();
-        const aq = d.current?.air_quality || {};
-        const calcAqi = calculateAqiFromPm25(aq.pm2_5 || 15);
-        return {
-          current: {
-            us_aqi: calcAqi,
-            pm2_5: Math.round(aq.pm2_5 || 15),
-            pm10: Math.round(aq.pm10 || 30),
-            ozone: Math.round(aq.o3 || 25),
-            nitrogen_dioxide: Math.round(aq.no2 || 12),
-            sulphur_dioxide: Math.round(aq.so2 || 8),
-            carbon_monoxide: Math.round(aq.co || 500)
-          }
-        };
-      }
-    } catch (e) {}
   }
 
   return null;
@@ -256,7 +183,7 @@ export async function fetchMarineData(lat, lon) {
   }
 }
 
-// 4. Hyper-Local Reverse Geocoding with Neighborhood & Pincode Precision
+// 4. Hyper-Local Reverse Geocoding
 export async function reverseGeocode(lat, lon) {
   try {
     const res = await fetch(
@@ -296,14 +223,12 @@ export async function reverseGeocode(lat, lon) {
         precision: 'Network Geolocation'
       };
     }
-  } catch (err) {
-    console.warn('Reverse geocode fallback', err);
-  }
+  } catch (err) {}
 
   return { name: 'My Station', state: 'GPS Coordinates', precision: 'Coordinates' };
 }
 
-// 5. Intelligent Multi-Tier Location Search (Cities, Suburbs, Pincodes)
+// 5. Intelligent Multi-Tier Location Search
 export async function searchLocation(query) {
   try {
     const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=en&format=json`;
