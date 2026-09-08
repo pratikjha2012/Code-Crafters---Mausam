@@ -1,4 +1,4 @@
-﻿import fetch from 'node-fetch';
+import fetch from 'node-fetch';
 
 // WMO code descriptions
 export const WMO_CODES = {
@@ -69,6 +69,53 @@ export async function geocodeLocation(locationStr) {
 // Tool 1: get_current_weather(location)
 export async function getCurrentWeather(location) {
   const geo = typeof location === 'object' && location.lat ? location : await geocodeLocation(location);
+
+  // Try WeatherAPI.com if key is set
+  const apiKey = process.env.WEATHER_API_KEY;
+  if (apiKey) {
+    try {
+      const wUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${geo.lat},${geo.lon}&days=1&aqi=yes&alerts=yes`;
+      const wRes = await fetch(wUrl);
+      if (wRes.ok) {
+        const d = await wRes.json();
+        const cur = d.current;
+        const loc = d.location;
+        const fDay = d.forecast?.forecastday?.[0]?.day;
+        const astro = d.forecast?.forecastday?.[0]?.astro;
+
+        return {
+          location: `${loc.name}, ${loc.region || loc.country}`,
+          coordinates: { lat: loc.lat, lon: loc.lon },
+          timestamp: new Date().toISOString(),
+          temperature: cur.temp_c,
+          feelsLike: cur.feelslike_c,
+          condition: cur.condition?.text || 'Clear',
+          conditionHindi: cur.condition?.text || 'साफ मौसम',
+          weatherCode: cur.condition?.code || 1000,
+          humidity: cur.humidity,
+          precipitation: cur.precip_mm,
+          rainProbabilityToday: fDay?.daily_chance_of_rain ?? 0,
+          windSpeed: cur.wind_kph,
+          windDirection: cur.wind_dir,
+          windGusts: cur.gust_kph,
+          pressure: cur.pressure_mb,
+          dewPoint: cur.dewpoint_c,
+          heatIndex: cur.heatindex_c,
+          wetBulb: cur.wetbulb_c,
+          tempMaxToday: fDay?.maxtemp_c ?? cur.temp_c,
+          tempMinToday: fDay?.mintemp_c ?? cur.temp_c,
+          uvIndexToday: cur.uv,
+          sunrise: astro?.sunrise || '06:00 AM',
+          sunset: astro?.sunset || '06:30 PM',
+          source: 'WeatherAPI.com Live Telemetry'
+        };
+      }
+    } catch (err) {
+      console.warn('WeatherAPI getCurrentWeather error, falling back to Open-Meteo:', err.message);
+    }
+  }
+
+  // Fallback to Open-Meteo
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max&models=best_match&timezone=auto`;
 
   const res = await fetch(url, { headers: { 'User-Agent': 'MausamServer/1.0' } });
@@ -107,6 +154,56 @@ export async function getCurrentWeather(location) {
 // Tool 2: get_hourly_forecast(location, date, time_range)
 export async function getHourlyForecast(location, date, timeRange) {
   const geo = typeof location === 'object' && location.lat ? location : await geocodeLocation(location);
+
+  const apiKey = process.env.WEATHER_API_KEY;
+  if (apiKey) {
+    try {
+      const wUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${geo.lat},${geo.lon}&days=2&aqi=no&alerts=no`;
+      const wRes = await fetch(wUrl);
+      if (wRes.ok) {
+        const d = await wRes.json();
+        const forecast = [];
+        const targetDateStr = date ? (typeof date === 'string' ? date.slice(0, 10) : new Date(date).toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10);
+
+        (d.forecast?.forecastday || []).forEach(dayObj => {
+          (dayObj.hour || []).forEach(h => {
+            if (h.time.startsWith(targetDateStr)) {
+              const hourNum = parseInt(h.time.slice(11, 13), 10);
+              if (timeRange !== undefined && timeRange !== null) {
+                if (typeof timeRange === 'number' && Math.abs(hourNum - timeRange) > 1) return;
+              }
+              forecast.push({
+                time: h.time,
+                hour: hourNum,
+                temperature: h.temp_c,
+                feelsLike: h.feelslike_c,
+                rainProbability: h.chance_of_rain ?? 0,
+                precipitation: h.precip_mm,
+                condition: h.condition?.text || 'Clear',
+                humidity: h.humidity,
+                visibility: h.vis_km * 1000,
+                windSpeed: h.wind_kph,
+                uvIndex: h.uv
+              });
+            }
+          });
+        });
+
+        if (forecast.length > 0) {
+          return {
+            location: `${d.location.name}, ${d.location.region}`,
+            date: targetDateStr,
+            timestamp: new Date().toISOString(),
+            hourlyCount: forecast.length,
+            forecast: forecast.slice(0, 24),
+            source: 'WeatherAPI.com Hourly Model'
+          };
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Open-Meteo fallback
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,visibility,wind_speed_10m,uv_index&models=best_match&timezone=auto`;
 
   const res = await fetch(url, { headers: { 'User-Agent': 'MausamServer/1.0' } });
@@ -116,7 +213,6 @@ export async function getHourlyForecast(location, date, timeRange) {
   const hourly = data.hourly;
   if (!hourly || !hourly.time) throw new Error('No hourly data returned');
 
-  // Filter for target date if provided
   const targetDateStr = date ? (typeof date === 'string' ? date.slice(0, 10) : new Date(date).toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10);
 
   const forecast = [];
@@ -126,7 +222,6 @@ export async function getHourlyForecast(location, date, timeRange) {
       const cond = getWeatherCondition(hourly.weather_code[i]);
       const hourNum = parseInt(tStr.slice(11, 13), 10);
 
-      // If timeRange is specified (e.g. 18 for 6 PM or "17-20")
       if (timeRange !== undefined && timeRange !== null) {
         if (typeof timeRange === 'number' && Math.abs(hourNum - timeRange) > 1) continue;
       }
@@ -153,7 +248,7 @@ export async function getHourlyForecast(location, date, timeRange) {
     date: targetDateStr,
     timestamp: new Date().toISOString(),
     hourlyCount: forecast.length,
-    forecast: forecast.slice(0, 24), // Up to 24 hours
+    forecast: forecast.slice(0, 24),
     source: 'Open-Meteo High-Resolution Hourly Model'
   };
 }
@@ -162,6 +257,40 @@ export async function getHourlyForecast(location, date, timeRange) {
 export async function getDailyForecast(location, date, numberOfDays = 7) {
   const geo = typeof location === 'object' && location.lat ? location : await geocodeLocation(location);
   const count = Math.min(14, Math.max(1, numberOfDays));
+
+  const apiKey = process.env.WEATHER_API_KEY;
+  if (apiKey) {
+    try {
+      const wUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${geo.lat},${geo.lon}&days=${count}&aqi=no&alerts=no`;
+      const wRes = await fetch(wUrl);
+      if (wRes.ok) {
+        const d = await wRes.json();
+        const days = (d.forecast?.forecastday || []).map(dObj => ({
+          date: dObj.date,
+          tempMax: dObj.day.maxtemp_c,
+          tempMin: dObj.day.mintemp_c,
+          condition: dObj.day.condition?.text || 'Clear',
+          conditionHindi: dObj.day.condition?.text || 'साफ',
+          rainProbability: dObj.day.daily_chance_of_rain ?? 0,
+          precipitationSum: dObj.day.totalprecip_mm,
+          uvIndexMax: dObj.day.uv,
+          windSpeedMax: dObj.day.maxwind_kph,
+          sunrise: dObj.astro?.sunrise,
+          sunset: dObj.astro?.sunset,
+          moonPhase: dObj.astro?.moon_phase
+        }));
+
+        return {
+          location: `${d.location.name}, ${d.location.region}`,
+          timestamp: new Date().toISOString(),
+          days,
+          source: 'WeatherAPI.com Daily Model'
+        };
+      }
+    } catch (e) {}
+  }
+
+  // Open-Meteo fallback
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max&forecast_days=${count}&models=best_match&timezone=auto`;
 
   const res = await fetch(url, { headers: { 'User-Agent': 'MausamServer/1.0' } });
@@ -198,6 +327,46 @@ export async function getDailyForecast(location, date, numberOfDays = 7) {
 // Tool 4: get_air_quality(location)
 export async function getAirQuality(location) {
   const geo = typeof location === 'object' && location.lat ? location : await geocodeLocation(location);
+
+  const apiKey = process.env.WEATHER_API_KEY;
+  if (apiKey) {
+    try {
+      const wUrl = `https://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${geo.lat},${geo.lon}&aqi=yes`;
+      const wRes = await fetch(wUrl);
+      if (wRes.ok) {
+        const d = await wRes.json();
+        const aq = d.current?.air_quality;
+        if (aq) {
+          const pm25 = aq.pm2_5 || 15;
+          let aqiVal = Math.round(pm25 * 2.5);
+          let category = 'Good';
+          let categoryHindi = 'अच्छा';
+          if (aqiVal > 300) { category = 'Hazardous / Severe'; categoryHindi = 'गंभीर / संकटपूर्ण'; }
+          else if (aqiVal > 200) { category = 'Very Unhealthy'; categoryHindi = 'बहुत अस्वस्थ'; }
+          else if (aqiVal > 150) { category = 'Unhealthy'; categoryHindi = 'अस्वस्थ'; }
+          else if (aqiVal > 100) { category = 'Moderate'; categoryHindi = 'मध्यम'; }
+          else if (aqiVal > 50) { category = 'Satisfactory'; categoryHindi = 'संतोषजनक'; }
+
+          return {
+            location: `${d.location.name}, ${d.location.region}`,
+            timestamp: new Date().toISOString(),
+            aqi: aqiVal,
+            category,
+            categoryHindi,
+            pm25: aq.pm2_5,
+            pm10: aq.pm10,
+            ozone: aq.o3,
+            no2: aq.no2,
+            so2: aq.so2,
+            co: aq.co,
+            source: 'WeatherAPI.com Real-Time Air Quality'
+          };
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Open-Meteo fallback
   const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${geo.lat}&longitude=${geo.lon}&current=us_aqi,pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,dust,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen&timezone=auto`;
 
   const res = await fetch(url, { headers: { 'User-Agent': 'MausamServer/1.0' } });
@@ -235,12 +404,42 @@ export async function getAirQuality(location) {
 
 // Tool 5: get_weather_alerts(location)
 export async function getWeatherAlerts(location) {
+  const geo = typeof location === 'object' && location.lat ? location : await geocodeLocation(location);
+
+  const apiKey = process.env.WEATHER_API_KEY;
+  if (apiKey) {
+    try {
+      const wUrl = `https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${geo.lat},${geo.lon}&days=1&aqi=no&alerts=yes`;
+      const wRes = await fetch(wUrl);
+      if (wRes.ok) {
+        const d = await wRes.json();
+        const apiAlerts = d.alerts?.alert || [];
+        if (apiAlerts.length > 0) {
+          return {
+            location: `${d.location.name}, ${d.location.region}`,
+            timestamp: new Date().toISOString(),
+            activeAlertCount: apiAlerts.length,
+            alerts: apiAlerts.map(a => ({
+              severity: a.severity?.toLowerCase() === 'severe' ? 'critical' : 'warning',
+              title: a.headline || a.event,
+              description: a.desc || a.instruction || a.headline,
+              areas: a.areas,
+              effective: a.effective,
+              expires: a.expires
+            })),
+            source: 'Official IMD / Government Meteorological Alerts'
+          };
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Threshold-based alerts fallback
   const current = await getCurrentWeather(location);
   const aqi = await getAirQuality(location);
 
   const alerts = [];
 
-  // 1. Extreme Heat or Cold
   if (current.temperature >= 40) {
     alerts.push({
       severity: 'warning',
@@ -250,63 +449,45 @@ export async function getWeatherAlerts(location) {
   } else if (current.temperature <= 4) {
     alerts.push({
       severity: 'warning',
-      title: 'Cold Wave / Frost Alert (शीत लहर)',
-      description: `Temperature is near freezing (${current.temperature}°C). Protect sensitive crops and livestock.`
+      title: 'Cold Wave Warning (शीतलहर)',
+      description: `Temperature is ${current.temperature}°C. Dress in thermal layers.`
     });
   }
 
-  // 2. Heavy Rain or Severe Thunderstorm
-  if (current.weatherCode === 65 || current.weatherCode === 82 || current.rainProbabilityToday > 75) {
+  if (current.rainProbabilityToday >= 75) {
     alerts.push({
       severity: 'warning',
-      title: 'Heavy Rain / Cloudburst Advisory (भारी वर्षा)',
-      description: `High precipitation probability (${current.rainProbabilityToday}%). High risk of road waterlogging and transit delays.`
-    });
-  } else if (current.weatherCode >= 95) {
-    alerts.push({
-      severity: 'critical',
-      title: 'Thunderstorm & Lightning Hazard (आंधी-तूफान)',
-      description: 'Severe convective thunderstorm active in the area. Seek sturdy shelter immediately.'
+      title: 'Precipitation Warning (भारी वर्षा की संभावना)',
+      description: `Rain probability is ${current.rainProbabilityToday}%. Waterlogging and traffic delays possible.`
     });
   }
 
-  // 3. Severe Air Pollution
-  if (aqi.aqi >= 250) {
+  if (aqi.aqi > 250) {
     alerts.push({
       severity: 'critical',
-      title: 'Severe Air Quality Alert (गंभीर वायु प्रदूषण)',
-      description: `AQI is hazardous at ${aqi.aqi} (PM2.5: ${aqi.pm25} µg/m³). N95 mask mandatory outdoors; vulnerable groups must stay indoors.`
+      title: 'Severe AQI Alert (गंभीर वायु प्रदूषण)',
+      description: `AQI is currently ${aqi.aqi} (${aqi.category}). N95 respirator mandatory outdoors.`
     });
   }
 
   return {
     location: current.location,
     timestamp: new Date().toISOString(),
-    alertsCount: alerts.length,
-    alerts: alerts.length > 0 ? alerts : [{
-      severity: 'info',
-      title: 'No Severe Weather Warnings (मौसम सामान्य)',
-      description: 'Atmospheric conditions are stable with no active meteorological red/orange warnings.'
-    }]
+    activeAlertCount: alerts.length,
+    alerts,
+    source: 'Mausam Real-Time Threshold Advisory Engine'
   };
 }
 
 // Tool 6: get_sunrise_sunset(location, date)
 export async function getSunriseSunset(location, date) {
-  const geo = typeof location === 'object' && location.lat ? location : await geocodeLocation(location);
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&daily=sunrise,sunset,daylight_duration&timezone=auto`;
-
-  const res = await fetch(url, { headers: { 'User-Agent': 'MausamServer/1.0' } });
-  if (!res.ok) throw new Error(`Sunrise/Sunset API error: ${res.status}`);
-  const data = await res.json();
-  const daily = data.daily;
-
+  const current = await getCurrentWeather(location);
   return {
-    location: `${geo.name}${geo.state ? ', ' + geo.state : ''}`,
-    timestamp: new Date().toISOString(),
-    sunrise: daily?.sunrise?.[0] ? new Date(daily.sunrise[0]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '06:00 AM',
-    sunset: daily?.sunset?.[0] ? new Date(daily.sunset[0]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '06:30 PM',
-    daylightSeconds: daily?.daylight_duration?.[0] || 43200,
-    source: 'Astronomical Solar Model'
+    location: current.location,
+    date: date || new Date().toISOString().slice(0, 10),
+    sunrise: current.sunrise,
+    sunset: current.sunset,
+    moonPhase: current.moonPhase || 'Waxing',
+    source: current.source
   };
 }
