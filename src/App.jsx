@@ -249,9 +249,14 @@ class ErrorBoundary extends React.Component {
           <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md">
             The application encountered a display refresh requirement while connecting to live telemetry.
           </p>
+          {this.state.error && (
+            <div className="max-w-md p-3 rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-left text-[11px] font-mono text-red-600 dark:text-red-400 break-all">
+              {this.state.error.message || String(this.state.error)}
+            </div>
+          )}
           <button
             onClick={() => {
-              try { localStorage.clear(); } catch (e) {}
+              try { localStorage.removeItem('mausam_last_weather_code'); } catch (e) {}
               window.location.reload();
             }}
             className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-lg transition flex items-center gap-2"

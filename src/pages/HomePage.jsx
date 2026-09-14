@@ -3,7 +3,7 @@ import { useWeather, PERSONAS } from '../context/WeatherContext';
 import { useUser } from '../context/UserContext';
 import OverviewHero from '../components/OverviewHero';
 import PersonaSelector from '../components/PersonaSelector';
-import { getWeatherDescription, INDIAN_CITIES } from '../services/weatherApi';
+import { getWeatherDescription } from '../services/weatherApi';
 import { 
   Droplets, 
   Sun, 
@@ -11,15 +11,12 @@ import {
   Eye, 
   Activity, 
   Sunrise, 
-  Sunset, 
   Clock, 
   AlertTriangle, 
   ShieldCheck, 
   Compass, 
   ChevronRight, 
   Sparkles,
-  ArrowUp,
-  ArrowDown,
   CalendarDays,
   Sprout,
   Car,
@@ -28,8 +25,6 @@ import {
   Waves,
   X,
   HelpCircle,
-  ExternalLink,
-  CheckCircle2,
   Bookmark,
   Info,
   Layers,
@@ -37,14 +32,17 @@ import {
 } from 'lucide-react';
 
 export default function HomePage({ onNavigate }) {
-  const { weather, language, activePersona, setActivePersona } = useWeather();
-  const { user, dismissInsight, isInsightDismissed, resetDismissedInsights } = useUser();
+  const { weather, language, activePersona } = useWeather();
+  const { dismissInsight, isInsightDismissed, resetDismissedInsights } = useUser();
 
   const [whyModalOpen, setWhyModalOpen] = useState(false);
   const [whyModalData, setWhyModalData] = useState(null);
 
-  if (!weather || !weather.current || !weather.aqi) return null;
-  const { current, aqi, marine, alerts, rawHourly, rawDaily, cityName } = weather;
+  const current = weather?.current;
+  const aqi = weather?.aqi;
+  const marine = weather?.marine;
+  const alerts = weather?.alerts;
+  const rawHourly = weather?.rawHourly;
 
   // 1. Time-of-Day Context Detection
   const timeContext = useMemo(() => {
@@ -57,6 +55,7 @@ export default function HomePage({ onNavigate }) {
 
   // 2. Dynamic "What Should I Do Next?" Personalized Action Recommendation
   const personalizedAction = useMemo(() => {
+    if (!current || !aqi) return null;
     // Generate recommendation according to active persona + live telemetry
     switch (activePersona) {
       case 'fitness': {
@@ -477,6 +476,8 @@ export default function HomePage({ onNavigate }) {
     setWhyModalData(data);
     setWhyModalOpen(true);
   };
+
+  if (!weather || !current || !aqi) return null;
 
   return (
     <div className="space-y-5 pb-20">
