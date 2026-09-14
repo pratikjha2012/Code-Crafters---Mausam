@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 
 /**
  * Maps WMO weather code to condition type and day/night variant.
