@@ -71,6 +71,17 @@ export default function WeatherVisual({
     }
   }, [mode]);
 
+  // State to track if local GIF exists or fails to load
+  const [gifFailed, setGifFailed] = useState(false);
+
+  // Check if custom GIF applies
+  const activeCustomGif = useMemo(() => {
+    if (gifFailed) return null;
+    if (resolved === 'clear_day') return '/gifs/clear-sky.gif';
+    if (resolved === 'rain') return '/gifs/rain.gif';
+    return null;
+  }, [resolved, gifFailed]);
+
   return (
     <div className={`relative inline-flex items-center justify-center select-none ${dims.size} ${className}`}>
       {/* Background Atmosphere Glow for Loading / Hero */}
@@ -92,7 +103,17 @@ export default function WeatherVisual({
         />
       )}
 
-      {/* 1. SUNNY / CLEAR DAY */}
+      {/* Render Custom GIF if available and active */}
+      {activeCustomGif && !gifFailed ? (
+        <img
+          src={activeCustomGif}
+          alt={resolved}
+          onError={() => setGifFailed(true)}
+          className={`w-full h-full object-cover ${mode === 'loading' ? 'rounded-full' : 'rounded-2xl'} drop-shadow-lg`}
+        />
+      ) : (
+        <>
+          {/* 1. SUNNY / CLEAR DAY */}
       {resolved === 'clear_day' && (
         <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-md overflow-visible">
           <defs>
@@ -448,6 +469,8 @@ export default function WeatherVisual({
           </g>
         </svg>
       )}
-    </div>
+    </>
+  )}
+</div>
   );
 }
