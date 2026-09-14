@@ -1,188 +1,82 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import WeatherVisual, { getConditionFromCode } from './WeatherVisual';
-import { Satellite, Radio, ShieldCheck, Sparkles } from 'lucide-react';
-
-const MET_INSIGHTS = [
-  {
-    en: "IMD Doppler Weather Radars scan cloud convection & storm velocity within 400 km in real-time.",
-    hi: "आईएमडी डॉपलर मौसम रडार 400 किमी तक तूफानी बादलों और वायु गति की वास्तविक समय में निगरानी करते हैं।"
-  },
-  {
-    en: "Established in 1875, the India Meteorological Department has served the nation for over 150 years.",
-    hi: "1875 में स्थापित, भारत मौसम विज्ञान विभाग 150 वर्षों से निरंतर राष्ट्र की सेवा कर रहा है।"
-  },
-  {
-    en: "High-resolution NWP numerical models evaluate temperature and humidity across 16 vertical atmospheric layers.",
-    hi: "संख्यात्मक मौसम भविष्यवाणी (NWP) मॉडल वायुमंडल की 16 परतों में तापमान और आर्द्रता का सटीक विश्लेषण करते हैं।"
-  },
-  {
-    en: "INSAT-3DR geostationary satellite transmits multi-spectral thermal infrared weather telemetry every 15 minutes.",
-    hi: "इनसेट-3डीआर उपग्रह हर 15 मिनट में भारतीय उपमहाद्वीप का थर्मल इन्फ्रारेड मौसम डेटा रिले करता है।"
-  },
-  {
-    en: "Mausam uses Open-Meteo high-resolution ECMWF ensemble modeling for authoritative temperature precision.",
-    hi: "मौसम ऐप तापमान की सटीक गणना के लिए ओपन-मेटियो ईसीएमडब्ल्यूएफ (ECMWF) मॉडल का उपयोग करता है।"
-  }
-];
+import React, { useState } from 'react';
 
 export default function WeatherLoadingScreen({
-  cityName = 'Local Station',
-  state = '',
-  weatherCode,
-  isDay,
-  language = 'en',
+  cityName = '',
   overlay = false
 }) {
-  const [insightIndex, setInsightIndex] = useState(0);
-  const [telemetryStep, setTelemetryStep] = useState(1);
+  const [pulseCount, setPulseCount] = useState(0);
+  const [isPressed, setIsPressed] = useState(false);
 
-  // Determine day/night if not supplied
-  const resolvedIsDay = useMemo(() => {
-    if (isDay !== undefined && isDay !== null) return Boolean(isDay);
-    const h = new Date().getHours();
-    return h >= 6 && h < 19;
-  }, [isDay]);
-
-  // Determine weather condition
-  const resolvedCondition = useMemo(() => {
-    if (weatherCode !== undefined && weatherCode !== null) {
-      return getConditionFromCode(weatherCode, resolvedIsDay).type;
-    }
-    // Check cached code from localStorage
-    try {
-      const cached = localStorage.getItem('mausam_last_weather_code');
-      if (cached !== null) {
-        return getConditionFromCode(Number(cached), resolvedIsDay).type;
-      }
-    } catch (e) {}
-
-    // Default to day/night clear
-    return resolvedIsDay ? 'clear_day' : 'clear_night';
-  }, [weatherCode, resolvedIsDay]);
-
-  // Rotate trivia insights every 3.5s
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setInsightIndex((prev) => (prev + 1) % MET_INSIGHTS.length);
-    }, 3500);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Cycle telemetry connection steps
-  useEffect(() => {
-    const t1 = setTimeout(() => setTelemetryStep(2), 600);
-    const t2 = setTimeout(() => setTelemetryStep(3), 1400);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, []);
-
-  const insight = MET_INSIGHTS[insightIndex];
+  const handleInteraction = () => {
+    setPulseCount((prev) => prev + 1);
+    setIsPressed(true);
+    setTimeout(() => setIsPressed(false), 300);
+  };
 
   return (
     <div
+      onClick={handleInteraction}
       className={`${
         overlay
-          ? 'fixed inset-0 z-50 backdrop-blur-md bg-slate-900/60'
-          : 'min-h-screen bg-gradient-to-b from-slate-50 via-sky-50/40 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950'
-      } text-slate-900 dark:text-slate-100 flex flex-col items-center justify-center p-4 sm:p-6 select-none transition-colors overflow-hidden`}
+          ? 'fixed inset-0 z-50 backdrop-blur-xl bg-slate-950/75'
+          : 'min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-[#071328] dark:from-slate-950 dark:via-[#071328] dark:to-slate-950'
+      } text-white flex flex-col items-center justify-center p-6 select-none transition-colors duration-500 cursor-pointer overflow-hidden`}
     >
-      {/* Background Doppler Radar Ring Sweep */}
-      <div className="relative flex items-center justify-center mb-4">
-        {/* Concentric Radar Rings */}
-        <div className="absolute w-56 h-56 sm:w-64 sm:h-64 rounded-full border border-sky-400/20 dark:border-sky-500/20 animate-radar-ping-1 pointer-events-none" />
-        <div className="absolute w-44 h-44 sm:w-52 sm:h-52 rounded-full border border-emerald-400/25 dark:border-emerald-500/20 animate-radar-ping-2 pointer-events-none" />
-        <div className="absolute w-32 h-32 sm:w-40 sm:h-40 rounded-full border border-sky-500/30 dark:border-sky-400/25 animate-radar-ping-3 pointer-events-none" />
+      {/* Subtle Ambient Radial Backlight */}
+      <div className="absolute w-80 h-80 sm:w-96 sm:h-96 rounded-full bg-sky-500/15 dark:bg-sky-400/10 blur-3xl pointer-events-none animate-pulse-slow" />
 
-        {/* Rotating Radar Sweep Beam */}
-        <div className="absolute w-52 h-52 sm:w-60 sm:h-60 rounded-full overflow-hidden pointer-events-none opacity-40 dark:opacity-50">
+      {/* Main Centered Content */}
+      <div className="relative z-10 flex flex-col items-center justify-center space-y-6">
+        
+        {/* Interactive Logo Container */}
+        <div className="relative flex items-center justify-center group">
+          
+          {/* Ambient Breathing Halo */}
           <div
-            className="w-full h-full animate-radar-sweep"
-            style={{
-              background: 'conic-gradient(from 0deg, transparent 0deg, transparent 270deg, rgba(16, 185, 129, 0.45) 360deg)'
-            }}
-          />
-        </div>
-
-        {/* Centerpiece Weather-Reactive Animated Visual */}
-        <div className="relative z-10 p-3 sm:p-4 rounded-full bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-white/60 dark:border-slate-800 shadow-2xl flex items-center justify-center">
-          <WeatherVisual
-            conditionType={resolvedCondition}
-            isDay={resolvedIsDay}
-            mode="loading"
+            className={`absolute w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-gradient-to-tr from-sky-500/20 via-blue-500/20 to-indigo-500/15 blur-xl transition-transform duration-500 pointer-events-none ${
+              isPressed ? 'scale-125 opacity-90' : 'animate-pulse-slow'
+            }`}
           />
 
-          {/* Floating Miniature IMD Emblem Tag */}
-          <div className="absolute -bottom-2 -right-1 bg-white dark:bg-slate-900 rounded-full p-1 border border-slate-200 dark:border-slate-700 shadow-md flex items-center gap-1">
+          {/* Interactive Ripple on Tap */}
+          {pulseCount > 0 && (
+            <div
+              key={pulseCount}
+              className="absolute w-28 h-28 sm:w-32 sm:h-32 rounded-full border border-sky-400/60 pointer-events-none animate-rain-ripple"
+            />
+          )}
+
+          {/* Centered App Logo */}
+          <div
+            className={`relative w-24 h-24 sm:w-28 sm:h-28 p-3.5 rounded-3xl bg-white/10 dark:bg-slate-900/60 backdrop-blur-2xl border border-white/20 dark:border-sky-500/30 shadow-2xl flex items-center justify-center transition-all duration-300 ${
+              isPressed ? 'scale-90 shadow-sky-500/30' : 'hover:scale-105 shadow-xl'
+            }`}
+          >
             <img
               src="/imd-logo.png"
-              alt="IMD"
-              className="w-6 h-6 object-contain"
+              alt="MAUSAM App Logo"
+              className="w-full h-full object-contain drop-shadow-md transition-transform duration-300"
             />
           </div>
         </div>
-      </div>
 
-      {/* Synchronizing Station Headline */}
-      <div className="text-center space-y-2 max-w-sm sm:max-w-md mt-2">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-100/80 dark:bg-sky-950/70 text-sky-800 dark:text-sky-300 text-xs font-bold tracking-wide border border-sky-200/60 dark:border-sky-800 shadow-sm">
-          <Radio className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 animate-pulse" />
-          <span>{cityName}{state ? `, ${state}` : ''}</span>
+        {/* Minimal Typography */}
+        <div className="text-center space-y-2.5">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-[0.25em] uppercase bg-gradient-to-r from-sky-200 via-white to-sky-300 bg-clip-text text-transparent">
+            MAUSAM
+          </h1>
+
+          {/* Clean Progress Line */}
+          <div className="w-32 sm:w-40 h-1 bg-white/10 rounded-full mx-auto overflow-hidden relative">
+            <div className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-sky-400 to-blue-500 rounded-full animate-cloud-drift" />
+          </div>
+
+          {cityName && (
+            <p className="text-[11px] font-medium text-sky-200/60 tracking-wider transition-opacity">
+              {cityName}
+            </p>
+          )}
         </div>
-
-        <h2 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 dark:text-white">
-          {language === 'hi' ? 'मौसम पूर्वानुमान कैलिब्रेट हो रहा है...' : 'Calibrating Weather Telemetry...'}
-        </h2>
-
-        {/* Live Telemetry Progress Stepper */}
-        <div className="flex items-center justify-center gap-3 pt-2 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-          <div className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${telemetryStep >= 1 ? 'bg-emerald-500 animate-ping' : 'bg-slate-400'}`} />
-            <span className={telemetryStep >= 1 ? 'text-slate-900 dark:text-white font-bold' : ''}>
-              <Satellite className="w-3 h-3 inline mr-0.5" /> INSAT-3DR
-            </span>
-          </div>
-          <span className="text-slate-300 dark:text-slate-700">•</span>
-          <div className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${telemetryStep >= 2 ? 'bg-sky-500' : 'bg-slate-400'}`} />
-            <span className={telemetryStep >= 2 ? 'text-slate-900 dark:text-white font-bold' : ''}>
-              Open-Meteo NWP
-            </span>
-          </div>
-          <span className="text-slate-300 dark:text-slate-700">•</span>
-          <div className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${telemetryStep >= 3 ? 'bg-amber-500' : 'bg-slate-400'}`} />
-            <span className={telemetryStep >= 3 ? 'text-slate-900 dark:text-white font-bold' : ''}>
-              CAMS Pollen
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Rotating Meteorological Facts & Insights Card */}
-      <div className="mt-6 max-w-sm sm:max-w-md w-full">
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-white/60 dark:bg-slate-900/60 backdrop-blur-md border border-slate-200/60 dark:border-slate-800 shadow-sm transition-all duration-500">
-          <div className="flex items-start gap-2.5">
-            <div className="p-1.5 rounded-lg bg-sky-100 dark:bg-sky-950 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5">
-              <Sparkles className="w-3.5 h-3.5" />
-            </div>
-            <div className="space-y-1">
-              <div className="text-[10px] font-extrabold uppercase tracking-wider text-sky-700 dark:text-sky-400">
-                {language === 'hi' ? 'मौसम विज्ञान तथ्य' : 'Meteorological Insight'}
-              </div>
-              <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed transition-opacity duration-300">
-                {language === 'hi' ? insight.hi : insight.en}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Official Government Provenance Footer */}
-      <div className="mt-6 text-[11px] text-slate-500 dark:text-slate-500 flex items-center gap-1.5 font-medium">
-        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-        <span>Official India Meteorological Department (IMD) Standards</span>
       </div>
     </div>
   );
