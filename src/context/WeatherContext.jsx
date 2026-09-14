@@ -79,6 +79,14 @@ export function WeatherProvider({ children }) {
       setLiveAQI(aqiData);
       setLiveMarine(marineData);
       setLastUpdated(new Date());
+
+      // Cache weather code & day/night state for instant weather loading screens
+      if (wData?.current?.weather_code !== undefined) {
+        try {
+          localStorage.setItem('mausam_last_weather_code', String(wData.current.weather_code));
+          localStorage.setItem('mausam_last_is_day', String(wData.current.is_day ?? 1));
+        } catch (e) {}
+      }
     } catch (err) {
       console.error('Live API fetch error:', err);
       setError("I'm unable to retrieve the latest weather data right now. Please try again in a moment.");

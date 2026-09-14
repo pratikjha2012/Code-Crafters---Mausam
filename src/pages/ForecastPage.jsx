@@ -14,6 +14,7 @@ import {
   ArrowDown,
   Sparkles
 } from 'lucide-react';
+import WeatherVisual from '../components/WeatherVisual';
 
 export default function ForecastPage() {
   const { weather, language } = useWeather();
@@ -32,12 +33,15 @@ export default function ForecastPage() {
       const h = hourDate.getHours();
       const code = rawHourly.weather_code ? rawHourly.weather_code[i] : 0;
       const desc = getWeatherDescription(code);
+      const isHourDay = h >= 6 && h < 19;
       hourlyData.push({
         time: i === 0 ? (language === 'hi' ? 'अभी' : 'Now') : `${h % 12 || 12} ${h >= 12 ? 'PM' : 'AM'}`,
         temp: Math.round(rawHourly.temperature_2m[i]),
         rainProb: rawHourly.precipitation_probability ? rawHourly.precipitation_probability[i] : (rawHourly.precipitation ? (rawHourly.precipitation[i] > 0 ? 75 : 0) : 0),
         windSpeed: rawHourly.wind_speed_10m ? Math.round(rawHourly.wind_speed_10m[i]) : current.windSpeed,
         icon: desc.icon,
+        code,
+        isDay: isHourDay,
         desc: language === 'hi' ? desc.hindi : desc.label,
       });
     }
@@ -64,6 +68,7 @@ export default function ForecastPage() {
         uvMax: rawDaily.uv_index_max ? rawDaily.uv_index_max[i] : 5,
         desc: language === 'hi' ? desc.hindi : desc.label,
         icon: desc.icon,
+        code
       });
     }
   }
@@ -113,14 +118,8 @@ export default function ForecastPage() {
                 {h.time}
               </span>
               
-              <div className="my-2 text-2xl">
-                {h.icon === 'Sun' ? '☀️' : 
-                 h.icon === 'CloudSun' ? '⛅' :
-                 h.icon === 'Cloud' ? '☁️' :
-                 h.icon === 'CloudRain' ? '🌧️' :
-                 h.icon === 'CloudLightning' ? '⛈️' :
-                 h.icon === 'CloudFog' ? '🌫️' :
-                 h.icon === 'Snowflake' ? '❄️' : '⛅'}
+              <div className="my-2 flex items-center justify-center h-9">
+                <WeatherVisual weatherCode={h.code} isDay={h.isDay} mode="compact" />
               </div>
 
               <span className="text-base font-black text-slate-900 dark:text-white">
@@ -156,16 +155,8 @@ export default function ForecastPage() {
               </div>
 
               {/* Weather Icon & Rain */}
-              <div className="flex items-center gap-2 w-28 shrink-0">
-                <span className="text-xl">
-                  {d.icon === 'Sun' ? '☀️' : 
-                   d.icon === 'CloudSun' ? '⛅' :
-                   d.icon === 'Cloud' ? '☁️' :
-                   d.icon === 'CloudRain' ? '🌧️' :
-                   d.icon === 'CloudLightning' ? '⛈️' :
-                   d.icon === 'CloudFog' ? '🌫️' :
-                   d.icon === 'Snowflake' ? '❄️' : '⛅'}
-                </span>
+              <div className="flex items-center gap-2 w-32 shrink-0">
+                <WeatherVisual weatherCode={d.code} isDay={true} mode="compact" />
                 <span className="text-xs text-slate-700 dark:text-slate-300 truncate font-medium">
                   {d.desc}
                 </span>

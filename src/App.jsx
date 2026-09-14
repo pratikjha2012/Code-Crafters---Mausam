@@ -35,6 +35,9 @@ import {
   Cloud
 } from 'lucide-react';
 
+import WeatherLoadingScreen from './components/WeatherLoadingScreen';
+import WeatherVisual from './components/WeatherVisual';
+
 function DashboardApp() {
   const { weather, loading, error, refreshData, selectedCity, language } = useWeather();
   const [activeTab, setActiveTab] = useState('home');
@@ -45,36 +48,15 @@ function DashboardApp() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Weather-Themed Loading Experience (Section 6: NO fake numbers, atmospheric clouds)
+  // Dynamic Weather-Reactive Loading Experience
   if (loading && !weather) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col items-center justify-center space-y-6 p-6 select-none transition-colors">
-        
-        {/* Official IMD Emblem with atmospheric glow */}
-        <div className="relative w-28 h-28 flex items-center justify-center">
-          <div className="absolute w-24 h-24 rounded-full bg-sky-400/25 dark:bg-sky-500/20 blur-2xl animate-pulse" />
-          <img 
-            src="/imd-logo.png" 
-            alt="India Meteorological Department Emblem" 
-            className="w-20 h-20 object-contain drop-shadow-lg animate-pulse-slow"
-          />
-          <div className="absolute -bottom-2 flex gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping" />
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping" style={{ animationDelay: '0.2s' }} />
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-600 animate-ping" style={{ animationDelay: '0.4s' }} />
-          </div>
-        </div>
-
-        <div className="text-center space-y-2 max-w-sm">
-          <h2 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 dark:text-white">
-            {language === 'hi' ? 'नवीनतम मौसम प्राप्त कर रहे हैं...' : 'Fetching latest weather...'}
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1.5 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-            <span>Connecting to live NWP satellite telemetry ({selectedCity?.name || 'Local Station'})...</span>
-          </p>
-        </div>
-      </div>
+      <WeatherLoadingScreen
+        cityName={selectedCity?.name}
+        state={selectedCity?.state}
+        weatherCode={weather?.current?.weatherCode}
+        language={language}
+      />
     );
   }
 
@@ -108,15 +90,7 @@ function DashboardApp() {
         return <ForecastPage />;
       case 'map':
         return (
-          <div className="space-y-4 pb-20">
-            <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-              <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                {language === 'hi' ? 'लाइव डॉपलर वेदर रडार' : 'Live Doppler Weather Radar'}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Pan across India's radar network with real-time precipitation vectors
-              </p>
-            </div>
+          <div className="pb-20">
             <WeatherMap />
           </div>
         );
@@ -155,6 +129,17 @@ function DashboardApp() {
       
       {/* Top Navbar */}
       <Navbar currentPage={activeTab} onNavigate={navigateTo} />
+
+      {/* Station Switching / Telemetry Sync Banner */}
+      {loading && weather && (
+        <div className="sticky top-16 z-40 flex justify-center px-4 py-1.5 pointer-events-none">
+          <div className="px-4 py-1.5 rounded-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-sky-400/50 shadow-xl flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-100">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+            <WeatherVisual mode="compact" conditionType="clear" className="w-4 h-4 inline-block shrink-0" />
+            <span>{language === 'hi' ? `${selectedCity?.name || 'स्टेशन'} डेटा कैलिब्रेट हो रहा है...` : `Syncing ${selectedCity?.name || 'Station'} Telemetry...`}</span>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area: Mobile-First Layout (Optimized for 360x800, 390x844, 412x915) */}
       <main className="flex-1 w-full max-w-md sm:max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto px-3.5 sm:px-6 py-4">

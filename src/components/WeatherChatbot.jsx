@@ -668,41 +668,28 @@ export default function WeatherChatbot() {
             </div>
           )}
 
-          {/* Input Area */}
-          <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2">
-            {/* Microphone STT Button */}
+          {/* Voice-First Input Bar (Text input disabled for now) */}
+          <div className="p-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-center gap-3">
             <button
               onClick={toggleListening}
-              className={`p-2.5 rounded-xl border transition ${
+              className={`w-full py-2.5 px-4 rounded-2xl border transition flex items-center justify-center gap-2.5 font-bold text-xs shadow-lg ${
                 isListening
-                  ? 'bg-rose-600 border-rose-500 text-white shadow-[0_0_12px_rgba(244,63,94,0.6)] animate-pulse'
-                  : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:text-white hover:border-slate-600'
+                  ? 'bg-rose-600 border-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.7)] animate-pulse'
+                  : 'bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 border-sky-400 text-white active:scale-95'
               }`}
-              title={isListening ? 'Stop Listening' : 'Voice Input (Speak your weather query)'}
+              title={isListening ? 'Stop Listening' : 'Tap to speak your weather query'}
             >
-              {isListening ? <MicOff className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4" />}
-            </button>
-
-            <input
-              type="text"
-              placeholder={
-                language === 'hi' 
-                  ? "मौसम के बारे में पूछें (उदा. क्या आज बारिश होगी?)..." 
-                  : "Ask anything about weather (e.g. Will it rain today?)..."
-              }
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              className="flex-1 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700/80 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
-            />
-
-            <button
-              onClick={() => handleSend()}
-              disabled={!inputText.trim()}
-              className="p-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white shadow transition"
-              title="Send Query"
-            >
-              <Send className="w-4 h-4" />
+              {isListening ? (
+                <>
+                  <MicOff className="w-4 h-4 text-white animate-bounce" />
+                  <span>{language === 'hi' ? 'सुन रहे हैं... बंद करने के लिए टैप करें' : 'Listening... Tap to stop'}</span>
+                </>
+              ) : (
+                <>
+                  <Mic className="w-4 h-4 text-white" />
+                  <span>{language === 'hi' ? 'बोलकर पूछें (माइक पर टैप करें)' : 'Tap to Speak Weather Query'}</span>
+                </>
+              )}
             </button>
           </div>
 

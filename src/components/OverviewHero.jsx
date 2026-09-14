@@ -24,6 +24,8 @@ import {
   Sparkles
 } from 'lucide-react';
 
+import WeatherVisual from './WeatherVisual';
+
 export default function OverviewHero() {
   const { weather, language } = useWeather();
   const { resolvedTheme } = useTheme();
@@ -31,21 +33,7 @@ export default function OverviewHero() {
   if (!weather || !weather.current || !weather.aqi) return null;
 
   const { current, aqi, marine, cityName, state, lastUpdatedText } = weather;
-
-  // Weather Icon renderer
-  const renderWeatherIcon = (iconName) => {
-    const props = { className: 'w-16 h-16 sm:w-20 sm:h-20 drop-shadow-lg' };
-    switch (iconName) {
-      case 'Sun': return <Sun {...props} className="w-16 h-16 sm:w-20 sm:h-20 text-amber-400 fill-amber-400/20" />;
-      case 'SunDim': return <SunDim {...props} className="w-16 h-16 sm:w-20 sm:h-20 text-amber-300" />;
-      case 'CloudFog': return <CloudFog {...props} className="w-16 h-16 sm:w-20 sm:h-20 text-slate-300" />;
-      case 'CloudRain': return <CloudRain {...props} className="w-16 h-16 sm:w-20 sm:h-20 text-sky-400" />;
-      case 'CloudRainWind': return <CloudRainWind {...props} className="w-16 h-16 sm:w-20 sm:h-20 text-blue-500" />;
-      case 'CloudLightning': return <CloudLightning {...props} className="w-16 h-16 sm:w-20 sm:h-20 text-purple-400" />;
-      case 'Snowflake': return <Snowflake {...props} className="w-16 h-16 sm:w-20 sm:h-20 text-cyan-200" />;
-      default: return <CloudSun {...props} className="w-16 h-16 sm:w-20 sm:h-20 text-sky-400" />;
-    }
-  };
+  const isDayTime = new Date().getHours() >= 6 && new Date().getHours() < 19;
 
   return (
     <WeatherBackground className="w-full shadow-xl border border-slate-200/40 dark:border-slate-800/80">
@@ -53,9 +41,9 @@ export default function OverviewHero() {
         
         {/* Top Header Row: Station & Real-Time Sync Indicator */}
         <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-sky-900 dark:text-sky-300 bg-white/60 dark:bg-slate-900/60 px-3 py-1 rounded-full backdrop-blur-md border border-white/40 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-white/60 dark:bg-slate-900/60 px-3 py-1 rounded-full backdrop-blur-md border border-white/40 dark:border-slate-800 shadow-sm">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
-            <span className="truncate">Live NWP Satellite Telemetry</span>
+            <span>Live</span>
           </div>
 
           <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1 bg-white/50 dark:bg-slate-900/50 px-2.5 py-1 rounded-full backdrop-blur-md">
@@ -73,9 +61,6 @@ export default function OverviewHero() {
               ({state})
             </span>
           </h1>
-          <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">
-            {weather.agroRegion}
-          </p>
         </div>
 
         {/* Current Temperature & Primary Condition */}
@@ -97,7 +82,7 @@ export default function OverviewHero() {
           </div>
 
           <div className="flex items-center gap-4 bg-white/40 dark:bg-slate-900/40 p-3.5 rounded-2xl backdrop-blur-md border border-white/30 dark:border-slate-800 shadow-sm">
-            {renderWeatherIcon(current.icon)}
+            <WeatherVisual weatherCode={current.weatherCode} isDay={isDayTime} mode="hero" />
             <div>
               <div className="text-xl sm:text-2xl font-black tracking-tight leading-snug">
                 {current.condition}

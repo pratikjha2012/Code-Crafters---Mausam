@@ -1,18 +1,62 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useWeather } from '../context/WeatherContext';
 import { INDIAN_CITIES } from '../services/weatherApi';
-import { MapPin, Layers, Radio, Sparkles, Navigation2, Maximize2, Minimize2, CloudRain } from 'lucide-react';
+import { 
+  MapPin, 
+  Layers, 
+  Radio, 
+  Sparkles, 
+  Navigation2, 
+  Maximize2, 
+  Minimize2, 
+  CloudRain,
+  Play,
+  Pause,
+  RotateCcw
+} from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = 'AIzaSyBmiRmzT33tYV3ktxqBhuT4c7veWHKjz6Q';
 
 export default function WeatherMap() {
-  const { selectedCity, setSelectedCity, language, dataMode } = useWeather();
+  const { selectedCity, setSelectedCity, language } = useWeather();
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
+  const radarOverlayRef = useRef(null);
+
   const [isLoaded, setIsLoaded] = useState(false);
-  const [mapLayer, setMapLayer] = useState('temperature'); // 'temperature' | 'radar' | 'aqi'
+  const [mapLayer, setMapLayer] = useState('radar'); // default to 'radar'
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // RainViewer Live Radar State
+  const [radarData, setRadarData] = useState(null);
+  const [allFrames, setAllFrames] = useState([]);
+  const [currentFrameIdx, setCurrentFrameIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [radarOpacity, setRadarOpacity] = useState(0.8);
+
+  // Fetch RainViewer public weather radar frames
+  useEffect(() => {
+    async function loadRainViewerData() {
+      try {
+        const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+        if (res.ok) {
+          const data = await res.json();
+          setRadarData(data);
+          const past = data.radar?.past || [];
+          const nowcast = data.radar?.nowcast || [];
+          const combined = [...past, ...nowcast];
+          setAllFrames(combined);
+          if (past.length > 0) {
+            setCurrentFrameIdx(past.length - 1); // latest live past frame
+          }
+        }
+      } catch (err) {
+        console.warn('RainViewer radar fetch error:', err);
+      }
+    }
+    loadRainViewerData();
+  }, []);
 
   // Load Google Maps Script
   useEffect(() => {
@@ -89,38 +133,73 @@ export default function WeatherMap() {
     }
   }, [selectedCity]);
 
-  // Render City Weather Markers
+  // Update Radar Overlay Layer when frame, opacity or layer changes
   useEffect(() => {
-    if (!mapInstanceRef.current || !isLoaded) return;
+    if (!mapInstanceRef.current || !isLoaded || !window.google?.maps) return;
+
+    if (mapLayer !== 'radar' || allFrames.length === 0 || !radarData?.host) {
+      mapInstanceRef.current.overlayMapTypes.clear();
+      radarOverlayRef.current = null;
+      return;
+    }
+
+    const frame = allFrames[currentFrameIdx];
+    if (!frame) return;
+
+    const radarLayer = new window.google.maps.ImageMapType({
+      getTileUrl: (coord, zoom) => {
+        return `${radarData.host}${frame.path}/256/${zoom}/${coord.x}/${coord.y}/2/1_1.png`;
+      },
+      tileSize: new window.google.maps.Size(256, 256),
+      opacity: radarOpacity,
+      name: 'RainViewer'
+    });
+
+    mapInstanceRef.current.overlayMapTypes.setAt(0, radarLayer);
+    radarOverlayRef.current = radarLayer;
+  }, [mapLayer, currentFrameIdx, allFrames, radarData, radarOpacity, isLoaded]);
+
+  // Radar Animation Loop
+  useEffect(() => {
+    if (!isPlaying || allFrames.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentFrameIdx((prev) => (prev + 1) % allFrames.length);
+    }, 650);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, allFrames]);
+
+  // Format frame timestamp
+  const formatFrameTime = (timestamp) => {
+    if (!timestamp) return 'Live Telemetry';
+    const d = new Date(timestamp * 1000);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Render Active Location Marker
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isLoaded || !selectedCity) return;
 
     // Clear old markers
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
 
-    INDIAN_CITIES.forEach((city) => {
-      const isCurrent = city.name === selectedCity.name;
-
-      const marker = new window.google.maps.Marker({
-        position: { lat: city.lat, lng: city.lon },
-        map: mapInstanceRef.current,
-        title: `${city.name} (${city.state})`,
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: isCurrent ? 9 : 6,
-          fillColor: isCurrent ? '#38bdf8' : (city.isCoastal ? '#06b6d4' : '#64748b'),
-          fillOpacity: 0.9,
-          strokeColor: '#ffffff',
-          strokeWeight: isCurrent ? 2.5 : 1.5,
-        }
-      });
-
-      // Marker Click -> Select Station
-      marker.addListener('click', () => {
-        setSelectedCity(city);
-      });
-
-      markersRef.current.push(marker);
+    const marker = new window.google.maps.Marker({
+      position: { lat: selectedCity.lat, lng: selectedCity.lon },
+      map: mapInstanceRef.current,
+      title: `${selectedCity.name}${selectedCity.state ? ', ' + selectedCity.state : ''}`,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 9,
+        fillColor: '#38bdf8',
+        fillOpacity: 0.95,
+        strokeColor: '#ffffff',
+        strokeWeight: 2.5,
+      }
     });
+
+    markersRef.current.push(marker);
   }, [isLoaded, selectedCity]);
 
   return (
@@ -129,41 +208,20 @@ export default function WeatherMap() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
         <div className="flex items-center gap-2.5">
           <div className="p-2 rounded-xl bg-sky-950 text-sky-400 border border-sky-800/80">
-            <Radio className="w-4 h-4 animate-pulse text-sky-400" />
+            <CloudRain className="w-4 h-4 text-sky-400" />
           </div>
           <div>
-            <h3 className="font-bold text-sm text-white flex items-center gap-2">
-              {language === 'hi' ? 'आईएमडी लाइव डॉपलर एवं स्टेशन रडार मैप' : 'IMD Doppler & Station Geospatial Map'}
-              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-700">
-                Google Maps API
-              </span>
+            <h3 className="font-bold text-sm text-white">
+              {language === 'hi' ? 'लाइव डॉपलर वेदर रडार' : 'Live Doppler Weather Radar'}
             </h3>
-            <p className="text-[11px] text-slate-400">
-              Interactive satellite station mapping • Click any station node to switch telemetry
-            </p>
           </div>
         </div>
 
-        {/* Layer Selector & Expand */}
+        {/* Live Indicator & Expand */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs">
-            <button
-              onClick={() => setMapLayer('temperature')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
-                mapLayer === 'temperature' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Stations
-            </button>
-            <button
-              onClick={() => setMapLayer('radar')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition ${
-                mapLayer === 'radar' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <CloudRain className="w-3 h-3" />
-              <span>Precip Radar</span>
-            </button>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/80 text-xs font-bold">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>Doppler Stream</span>
           </div>
 
           <button
@@ -180,7 +238,7 @@ export default function WeatherMap() {
       <div className="relative rounded-2xl overflow-hidden border border-slate-800 shadow-inner">
         <div
           ref={mapRef}
-          className={`w-full transition-all duration-300 ${isExpanded ? 'h-[520px]' : 'h-[320px]'}`}
+          className={`w-full transition-all duration-300 ${isExpanded ? 'h-[520px]' : 'h-[340px]'}`}
         />
 
         {/* Loading overlay if maps API is initializing */}
@@ -192,8 +250,8 @@ export default function WeatherMap() {
         )}
 
         {/* Floating Station Overlay Card on Map */}
-        <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-xs bg-slate-950/90 backdrop-blur-md p-3 rounded-2xl border border-slate-800 shadow-xl text-xs space-y-1">
-          <div className="flex items-center justify-between">
+        <div className="absolute top-3 left-3 bg-slate-950/90 backdrop-blur-md px-3 py-2 rounded-2xl border border-slate-800 shadow-xl text-xs space-y-1">
+          <div className="flex items-center gap-2">
             <span className="font-bold text-white flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-sky-400" />
               {selectedCity.name}
@@ -202,12 +260,118 @@ export default function WeatherMap() {
               Active Station
             </span>
           </div>
-          <div className="text-[11px] text-slate-400 flex items-center justify-between">
-            <span>Lat: {selectedCity.lat.toFixed(2)}°, Lon: {selectedCity.lon.toFixed(2)}°</span>
-            <span className="text-slate-300 font-medium">{selectedCity.agroRegion}</span>
+        </div>
+
+        {/* Floating Live Indicator Badge */}
+        {mapLayer === 'radar' && (
+          <div className="absolute top-3 right-3 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-800 shadow-xl text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+            <span>LIVE Doppler Radar</span>
+          </div>
+        )}
+      </div>
+
+      {/* RainViewer Live Radar Playback Controller (when radar layer is active) */}
+      {mapLayer === 'radar' && allFrames.length > 0 && (
+        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+            {/* Play/Pause & Reset */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPlaying(!isPlaying)}
+                className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold flex items-center gap-1.5 shadow transition"
+              >
+                {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                <span>{isPlaying ? 'Pause' : 'Play Loop'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPlaying(false);
+                  const pastLen = radarData?.radar?.past?.length || 0;
+                  if (pastLen > 0) setCurrentFrameIdx(pastLen - 1);
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition flex items-center gap-1"
+                title="Jump to latest frame"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span className="text-[11px]">Latest</span>
+              </button>
+            </div>
+
+            {/* Active Time Badge */}
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 text-[11px]">Radar Timestamp:</span>
+              <span className="px-2.5 py-1 rounded-lg bg-sky-950/80 text-sky-300 font-mono font-bold text-xs border border-sky-800">
+                {formatFrameTime(allFrames[currentFrameIdx]?.time)}
+              </span>
+            </div>
+
+            {/* Opacity Control */}
+            <div className="flex items-center gap-2 text-slate-400 text-[11px]">
+              <span>Opacity:</span>
+              <input
+                type="range"
+                min="0.2"
+                max="1"
+                step="0.05"
+                value={radarOpacity}
+                onChange={(e) => setRadarOpacity(parseFloat(e.target.value))}
+                className="w-16 accent-sky-500 cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* Timeline Scrubber */}
+          <div className="space-y-1">
+            <input
+              type="range"
+              min="0"
+              max={allFrames.length - 1}
+              value={currentFrameIdx}
+              onChange={(e) => {
+                setIsPlaying(false);
+                setCurrentFrameIdx(parseInt(e.target.value, 10));
+              }}
+              className="w-full accent-sky-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg appearance-none"
+            />
+            <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+              <span>{formatFrameTime(allFrames[0]?.time)}</span>
+              <span className="text-emerald-400 font-bold">LIVE RADAR</span>
+              <span>{formatFrameTime(allFrames[allFrames.length - 1]?.time)}</span>
+            </div>
+          </div>
+
+          {/* Radar Intensity Legend */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-900 text-[10px] text-slate-400">
+            <span className="font-semibold uppercase tracking-wider">Precipitation Rate:</span>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
+                <span>Light</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                <span>Moderate</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+                <span>Heavy</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                <span>Violent / Storm</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-400" />
+                <span>Hail</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
