@@ -25,13 +25,65 @@ export const ALLERGIES_LIST = [
   { id: 'heat_sensitive', label: 'Heat Exhaustion Prone', hindi: 'अत्यधिक गर्मी / लू संवेदनशीलता', icon: '🔥', desc: 'Wet-bulb thermal stress & hydration warnings' }
 ];
 
+export const DEFAULT_ROUTINES = [
+  { 
+    id: 'routine-run', 
+    title: 'Morning Workout & Run', 
+    hindi: 'सुबह की दौड़ / व्यायाम', 
+    time: '06:30', 
+    persona: 'fitness', 
+    icon: 'Flame', 
+    days: 'Daily',
+    enabled: true 
+  },
+  { 
+    id: 'routine-commute', 
+    title: 'Daily Office Commute', 
+    hindi: 'दैनिक ऑफिस आवागमन', 
+    time: '08:30', 
+    persona: 'commute', 
+    icon: 'Car', 
+    days: 'Mon - Fri',
+    enabled: true 
+  },
+  { 
+    id: 'routine-school', 
+    title: 'School Transit & Pickup', 
+    hindi: 'स्कूल बस / पिकअप', 
+    time: '07:45', 
+    persona: 'family', 
+    icon: 'ShieldCheck', 
+    days: 'Mon - Fri',
+    enabled: true 
+  },
+  { 
+    id: 'routine-agri', 
+    title: 'Agro Field Spray Routine', 
+    hindi: 'खेत सिंचाई व कीटनाशक छिड़काव', 
+    time: '07:00', 
+    persona: 'agri', 
+    icon: 'Sprout', 
+    days: 'Weekly',
+    enabled: true 
+  }
+];
+
 export const DEFAULT_USER = {
   name: 'Citizen',
+  activePersona: 'all',
   priorities: ['rain', 'temp', 'aqi', 'alerts', 'outdoor'],
   topPriority: 'rain',
   allergies: ['dust', 'uv_sensitive'],
   commuteTime: '08:30',
   workoutTime: '06:30',
+  savedLocations: ['New Delhi', 'Mumbai', 'Bengaluru', 'Ranchi'],
+  savedRoutines: DEFAULT_ROUTINES,
+  dismissedInsights: {},
+  notificationSettings: {
+    severeOnly: true,
+    morningBrief: true,
+    rainWarning: true,
+  },
   isOnboarded: false,
 };
 
@@ -41,14 +93,15 @@ export function UserProvider({ children }) {
       const saved = localStorage.getItem('mausam_user_profile');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Ensure priorities array exists
-        if (!parsed.priorities || parsed.priorities.length === 0) {
-          parsed.priorities = DEFAULT_USER.priorities;
-        }
-        if (!parsed.topPriority) {
-          parsed.topPriority = parsed.priorities[0] || 'rain';
-        }
-        return parsed;
+        return {
+          ...DEFAULT_USER,
+          ...parsed,
+          priorities: (parsed.priorities && parsed.priorities.length > 0) ? parsed.priorities : DEFAULT_USER.priorities,
+          savedLocations: parsed.savedLocations || DEFAULT_USER.savedLocations,
+          savedRoutines: parsed.savedRoutines || DEFAULT_USER.savedRoutines,
+          dismissedInsights: parsed.dismissedInsights || {},
+          notificationSettings: { ...DEFAULT_USER.notificationSettings, ...(parsed.notificationSettings || {}) }
+        };
       }
     } catch (e) {
       console.warn('Could not read user profile from storage', e);
@@ -86,6 +139,73 @@ export function UserProvider({ children }) {
     setIsOnboardingOpen(true);
   };
 
+  // Saved Location Helpers
+  const toggleSaveLocation = (cityName) => {
+    setUser(prev => {
+      const list = prev.savedLocations || [];
+      const exists = list.includes(cityName);
+      const updated = exists ? list.filter(c => c !== cityName) : [...list, cityName];
+      return { ...prev, savedLocations: updated };
+    });
+  };
+
+  const isLocationSaved = (cityName) => {
+    return (user.savedLocations || []).includes(cityName);
+  };
+
+  // Saved Routines Helpers
+  const addSavedRoutine = (routine) => {
+    setUser(prev => ({
+      ...prev,
+      savedRoutines: [
+        ...(prev.savedRoutines || []),
+        { id: `routine-${Date.now()}`, enabled: true, ...routine }
+      ]
+    }));
+  };
+
+  const deleteSavedRoutine = (id) => {
+    setUser(prev => ({
+      ...prev,
+      savedRoutines: (prev.savedRoutines || []).filter(r => r.id !== id)
+    }));
+  };
+
+  const toggleSavedRoutine = (id) => {
+    setUser(prev => ({
+      ...prev,
+      savedRoutines: (prev.savedRoutines || []).map(r => 
+        r.id === id ? { ...r, enabled: !r.enabled } : r
+      )
+    }));
+  };
+
+  // Dismiss / Snooze Insight Helpers
+  const dismissInsight = (insightKey) => {
+    setUser(prev => ({
+      ...prev,
+      dismissedInsights: {
+        ...(prev.dismissedInsights || {}),
+        [insightKey]: Date.now()
+      }
+    }));
+  };
+
+  const isInsightDismissed = (insightKey) => {
+    const timestamp = user.dismissedInsights?.[insightKey];
+    if (!timestamp) return false;
+    // Dismiss lasts for 12 hours
+    const twelveHoursMs = 12 * 60 * 60 * 1000;
+    return (Date.now() - timestamp) < twelveHoursMs;
+  };
+
+  const resetDismissedInsights = () => {
+    setUser(prev => ({
+      ...prev,
+      dismissedInsights: {}
+    }));
+  };
+
   return (
     <UserContext.Provider value={{
       user,
@@ -95,7 +215,15 @@ export function UserProvider({ children }) {
       isOnboardingOpen,
       setIsOnboardingOpen,
       isProfileModalOpen,
-      setIsProfileModalOpen
+      setIsProfileModalOpen,
+      toggleSaveLocation,
+      isLocationSaved,
+      addSavedRoutine,
+      deleteSavedRoutine,
+      toggleSavedRoutine,
+      dismissInsight,
+      isInsightDismissed,
+      resetDismissedInsights
     }}>
       {children}
     </UserContext.Provider>

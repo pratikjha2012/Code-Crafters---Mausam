@@ -9,14 +9,16 @@ import UserProfileModal from './components/UserProfileModal';
 import WeatherChatbot from './components/WeatherChatbot';
 import Footer from './components/Footer';
 
-// Page Views for 5 Tabs
+// Page Views for Core Tabs
 import HomePage from './pages/HomePage';
 import ForecastPage from './pages/ForecastPage';
+import SavedPage from './pages/SavedPage';
+import ProfilePage from './pages/ProfilePage';
 import AlertsPage from './pages/AlertsPage';
 import MorePage from './pages/MorePage';
 import WeatherMap from './components/WeatherMap';
 
-// Dedicated Specialized Hubs
+// Dedicated Specialized Hubs (Progressive Disclosure)
 import HealthPage from './pages/HealthPage';
 import FitnessPage from './pages/FitnessPage';
 import BeachPage from './pages/BeachPage';
@@ -83,7 +85,7 @@ function DashboardApp() {
   // Render the current view according to active tab / hub
   const renderCurrentView = () => {
     switch (activeTab) {
-      // 5 Core Tabs
+      // 5 Core Wireframe Tabs
       case 'home':
         return <HomePage onNavigate={navigateTo} />;
       case 'forecast':
@@ -94,12 +96,18 @@ function DashboardApp() {
             <WeatherMap />
           </div>
         );
+      case 'saved':
+        return <SavedPage onNavigate={navigateTo} />;
+      case 'profile':
+        return <ProfilePage onNavigate={navigateTo} />;
+
+      // Severe Alerts View
       case 'alerts':
         return <AlertsPage />;
       case 'more':
         return <MorePage onNavigate={navigateTo} />;
 
-      // Specialized Persona Portals (opened via More or Home)
+      // Specialized Persona Portals (Progressive Disclosure)
       case 'health':
         return <HealthPage onBack={() => navigateTo('home')} />;
       case 'fitness':
@@ -127,7 +135,7 @@ function DashboardApp() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
       
-      {/* Top Navbar */}
+      {/* Top Navbar: MAUSAM [Location ▾] 🔔 Profile ◉ */}
       <Navbar currentPage={activeTab} onNavigate={navigateTo} />
 
       {/* Station Switching / Telemetry Sync Banner */}
@@ -144,7 +152,7 @@ function DashboardApp() {
       {/* Main Content Area: Mobile-First Layout (Optimized for 360x800, 390x844, 412x915) */}
       <main className="flex-1 w-full max-w-md sm:max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto px-3.5 sm:px-6 py-4">
         
-        {/* Desktop Phone Frame Toggle (for design evaluation) */}
+        {/* Desktop Phone Frame Toggle (for mobile evaluation) */}
         <div className="hidden lg:flex justify-end mb-3">
           <button
             type="button"
@@ -172,7 +180,7 @@ function DashboardApp() {
               {/* Dynamic Island Notch */}
               <div className="bg-slate-100 dark:bg-slate-900 pt-3 pb-2 px-6 flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">09:41</span>
-                <div className="w-24 h-4 bg-slate-900 dark:bg-black rounded-full" />
+                <div className="w-24 h-4 bg-slate-900 dark:black rounded-full" />
                 <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">5G 100%</span>
               </div>
 
@@ -194,13 +202,13 @@ function DashboardApp() {
 
       </main>
 
-      {/* Mobile-First 5-Tab Bottom Navigation */}
+      {/* Mobile-First 5-Tab Bottom Navigation: [Home] [Forecast] [Map] [Saved] [Profile] */}
       <BottomNav 
-        currentTab={['home', 'forecast', 'map', 'alerts', 'more'].includes(activeTab) ? activeTab : 'home'} 
+        currentTab={['home', 'forecast', 'map', 'saved', 'profile'].includes(activeTab) ? activeTab : 'home'} 
         onTabChange={navigateTo} 
       />
 
-      {/* Floating AI Mausam Assistant (Bottom Sheet Drawer on Mobile) */}
+      {/* Floating AI Mausam Assistant (Voice-First) */}
       <WeatherChatbot />
 
       {/* First-Time Onboarding Modal ("Make Mausam yours") */}

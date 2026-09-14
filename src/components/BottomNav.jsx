@@ -4,8 +4,8 @@ import {
   Home, 
   CalendarDays, 
   Map, 
-  AlertTriangle, 
-  MoreHorizontal 
+  Bookmark, 
+  User 
 } from 'lucide-react';
 
 export default function BottomNav({ currentTab, onTabChange }) {
@@ -18,6 +18,8 @@ export default function BottomNav({ currentTab, onTabChange }) {
       id: 'home',
       label: language === 'hi' ? 'होम' : 'Home',
       icon: Home,
+      badge: activeAlertCount > 0 ? activeAlertCount : null,
+      badgeColor: 'bg-red-500 text-white',
     },
     {
       id: 'forecast',
@@ -30,23 +32,21 @@ export default function BottomNav({ currentTab, onTabChange }) {
       icon: Map,
     },
     {
-      id: 'alerts',
-      label: language === 'hi' ? 'अलर्ट' : 'Alerts',
-      icon: AlertTriangle,
-      badge: activeAlertCount > 0 ? activeAlertCount : null,
-      badgeColor: 'bg-red-500 text-white',
+      id: 'saved',
+      label: language === 'hi' ? 'सेव्ड' : 'Saved',
+      icon: Bookmark,
     },
     {
-      id: 'more',
-      label: language === 'hi' ? 'सेटिंग्स' : 'More',
-      icon: MoreHorizontal,
+      id: 'profile',
+      label: language === 'hi' ? 'प्रोफाइल' : 'Profile',
+      icon: User,
     },
   ];
 
   return (
     <nav 
       aria-label="Mobile Bottom Navigation" 
-      className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800/90 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] transition-colors duration-300"
+      className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800/90 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] transition-colors duration-300"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 8px)' }}
     >
       <div className="max-w-md mx-auto px-3 py-2 flex items-center justify-around">
